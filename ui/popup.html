@@ -1,0 +1,251 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+  <meta charset="utf-8">
+  <title>VisionSync Elite</title>
+  <style>
+    body {
+      font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+      width: 320px;
+      margin: 0;
+      padding: 16px;
+      background: #0f0f13;
+      color: #ffffff;
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+    }
+
+    h1 {
+      font-size: 20px;
+      margin: 0;
+      background: linear-gradient(90deg, #ff8a00, #e52e71);
+      -webkit-background-clip: text;
+      background-clip: text;
+      -webkit-text-fill-color: transparent;
+      text-align: center;
+      font-weight: 800;
+      letter-spacing: 0.5px;
+    }
+
+    .btn {
+      background: #2a2a2a;
+      color: white;
+      border: 1px solid #3d3d3d;
+      padding: 12px;
+      border-radius: 8px;
+      cursor: pointer;
+      font-size: 14px;
+      transition: all 0.2s cubic-bezier(0.25, 0.46, 0.45, 0.94);
+      font-weight: 600;
+      width: 100%;
+    }
+
+    .btn:hover {
+      background: #3a3a3a;
+      border-color: #ff8a00;
+      transform: translateY(-1px);
+    }
+
+    .btn-primary {
+      background: linear-gradient(90deg, #ff8a00, #e52e71);
+      border: none;
+      box-shadow: 0 4px 15px rgba(229, 46, 113, 0.3);
+    }
+
+    .btn-primary:hover {
+      background: linear-gradient(90deg, #ff9d2e, #f04685);
+      box-shadow: 0 6px 20px rgba(229, 46, 113, 0.4);
+    }
+
+    .input-field {
+      background: rgba(30, 30, 30, 0.6);
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      padding: 12px;
+      border-radius: 8px;
+      color: white;
+      font-size: 14px;
+      outline: none;
+      width: 100%;
+      box-sizing: border-box;
+      transition: border-color 0.2s;
+    }
+
+    .input-field:focus {
+      border-color: #ff8a00;
+      background: rgba(40, 40, 40, 0.8);
+    }
+
+    .status {
+      font-size: 12px;
+      color: #aaa;
+      text-align: center;
+      margin-top: 4px;
+      min-height: 15px;
+    }
+
+    /* Tab Layout */
+    .tabs {
+      display: flex;
+      background: rgba(255, 255, 255, 0.05);
+      border-radius: 8px;
+      padding: 4px;
+      margin-bottom: 8px;
+    }
+
+    .tab {
+      flex: 1;
+      text-align: center;
+      padding: 8px 0;
+      font-size: 13px;
+      font-weight: 600;
+      cursor: pointer;
+      border-radius: 6px;
+      color: #888;
+      transition: all 0.3s;
+    }
+
+    .tab.active {
+      background: #2a2a2a;
+      color: #fff;
+      box-shadow: 0 2px 5px rgba(0, 0, 0, 0.2);
+    }
+
+    .tab-content {
+      display: none;
+      flex-direction: column;
+      gap: 12px;
+      animation: fadeIn 0.3s ease;
+    }
+
+    .tab-content.active {
+      display: flex;
+    }
+
+    @keyframes fadeIn {
+      from {
+        opacity: 0;
+        transform: translateY(5px);
+      }
+
+      to {
+        opacity: 1;
+        transform: translateY(0);
+      }
+    }
+
+    /* Results Box */
+    .result-box {
+      background: rgba(229, 46, 113, 0.1);
+      border: 1px dashed rgba(229, 46, 113, 0.5);
+      padding: 12px;
+      border-radius: 8px;
+      display: none;
+      /* hidden by default */
+      flex-direction: column;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .result-box.active {
+      display: flex;
+      animation: fadeIn 0.4s ease;
+    }
+
+    .room-code {
+      font-family: monospace;
+      font-size: 16px;
+      color: #ff8a00;
+      font-weight: bold;
+      letter-spacing: 1px;
+    }
+
+    #launchOverlay {
+      text-align: center;
+    }
+
+    /* Wrap active room controls to hide them initially */
+    #mainApp {
+      display: none;
+      flex-direction: column;
+      gap: 12px;
+    }
+  </style>
+</head>
+
+<body>
+  <h1>VisionSync Elite</h1>
+
+  <div id="launchOverlay">
+    <button id="launchBtn" class="btn btn-primary">Launch on this Tab</button>
+  </div>
+
+  <div id="mainApp">
+    <!-- Common Name Input -->
+    <div id="nameInputWrapper">
+      <input type="text" id="usernameInput" class="input-field" placeholder="Display Name (e.g. John)" />
+    </div>
+
+    <!-- Tabs & Setup Selection -->
+    <div id="connectionControls">
+      <!-- Navigation -->
+      <div class="tabs">
+        <div class="tab active" data-target="create">Create Room</div>
+        <div class="tab" data-target="join">Join Room</div>
+      </div>
+
+      <!-- Create Room Flow -->
+      <div id="create" class="tab-content active">
+        <button id="generateBtn" class="btn btn-primary">Generate Room Link</button>
+
+        <div id="createResult" class="result-box">
+          <span class="room-code" id="generatedCodeDisplay">vsync-XXXX</span>
+          <button id="copyBtn" class="btn">Copy Link</button>
+        </div>
+      </div>
+
+      <!-- Join Room Flow -->
+      <div id="join" class="tab-content">
+        <input type="text" id="roomIdInput" class="input-field" placeholder="Paste Room Link (vsync-...)" />
+        <button id="joinBtn" class="btn btn-primary">Join Room</button>
+
+        <!-- Active Public Rooms List -->
+        <div id="activeRoomsSection"
+          style="margin-top: 16px; border-top: 1px solid rgba(255,255,255,0.05); padding-top: 12px; display: none;">
+          <div
+            style="font-size: 10px; color: #888; margin-bottom: 10px; text-transform: uppercase; letter-spacing: 1.5px; font-weight: 800;">
+            Active Public Rooms</div>
+          <div id="activeRoomsList"
+            style="display: flex; flex-direction: column; gap: 8px; max-height: 140px; overflow-y: auto; padding-right: 4px;">
+            <!-- Dynamic Items -->
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Active Connection View -->
+    <div id="connectedView" style="display:none; flex-direction: column; gap: 12px;">
+      <div
+        style="background: rgba(45, 211, 102, 0.1); border: 1px solid rgba(45, 211, 102, 0.3); padding: 12px; border-radius: 8px; text-align: center;">
+        <div style="font-size: 14px; color: #25d366; font-weight: bold; ">Connected</div>
+      </div>
+
+      <div class="result-box active" style="background: rgba(255,255,255,0.05); border: 1px dashed #3d3d3d;">
+        <span style="font-size: 11px; color: #888;">Share this Code:</span>
+        <span class="room-code" id="currentRoomLink">vsync-XXXX</span>
+        <button id="copyActiveBtn" class="btn" style="padding: 8px; font-size: 12px;">Copy Code</button>
+      </div>
+
+      <button id="leaveBtn" class="btn"
+        style="background: rgba(229, 46, 113, 0.1); border-color: rgba(229, 46, 113, 0.3); color: #ff2a6d;">Leave
+        Room</button>
+    </div>
+  </div>
+
+  <div id="statusMsg" class="status">Waiting for activation...</div>
+
+  <script src="popup.js"></script>
+</body>
+
+</html>

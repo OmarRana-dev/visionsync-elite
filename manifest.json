@@ -1,0 +1,45 @@
+{
+  "manifest_version": 3,
+  "name": "VisionSync Elite",
+  "version": "1.0",
+  "description": "Premium synchronized movie watching extension with Zero-Latency Event-Driven P2P.",
+  "action": {
+    "default_popup": "ui/popup.html",
+    "default_icon": {
+      "16": "icons/icon16.png",
+      "48": "icons/icon48.png",
+      "128": "icons/icon128.png"
+    }
+  },
+  "icons": {
+    "16": "icons/icon16.png",
+    "48": "icons/icon48.png",
+    "128": "icons/icon128.png"
+  },
+  "permissions": [
+    "activeTab",
+    "scripting",
+    "storage",
+    "tabs",
+    "webNavigation"
+  ],
+  "host_permissions": [
+    "*://*.moviebox.com/*",
+    "*://*.netmirror.com/*",
+    "*://*.netflix.com/*",
+    "http://localhost:3000/*",
+    "ws://localhost:3000/*",
+    "https://*.onrender.com/*",
+    "wss://*.onrender.com/*"
+  ],
+  "background": {
+    "service_worker": "background.js",
+    "type": "module"
+  },
+  "web_accessible_resources": [
+    {
+      "resources": ["ui/*", "scripts/*", "icons/*"],
+      "matches": ["<all_urls>"]
+    }
+  ]
+}
