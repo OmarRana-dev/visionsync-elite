@@ -131,14 +131,26 @@ document.addEventListener('DOMContentLoaded', () => {
   function checkTabAndShowApp() {
     chrome.tabs.query({ active: true, currentWindow: true }, (tabsList) => {
       if (!tabsList[0]) return;
-      chrome.tabs.sendMessage(tabsList[0].id, { type: 'GET_STATUS' }, (response) => {
-        if (!chrome.runtime.lastError && response && response.status === 'PONG') {
-          showMainApp('VisionSync Active!', response);
-        } else {
-          launchOverlay.style.display = 'flex';
+      const activeTabId = tabsList[0].id;
+
+      chrome.storage.local.get(['isAutoJoining', 'autoJoinTabId'], (res) => {
+        if (res.isAutoJoining && res.autoJoinTabId === activeTabId) {
+          // Block manual interaction on this tab during auto-join
+          launchOverlay.style.display = 'none';
           mainApp.style.display       = 'none';
-          statusMsg.textContent       = 'Ready to launch.';
+          statusMsg.textContent       = 'Auto-joining watch party... Please wait.';
+          return;
         }
+
+        chrome.tabs.sendMessage(activeTabId, { type: 'GET_STATUS' }, (response) => {
+          if (!chrome.runtime.lastError && response && response.status === 'PONG') {
+            showMainApp('VisionSync Active!', response);
+          } else {
+            launchOverlay.style.display = 'flex';
+            mainApp.style.display       = 'none';
+            statusMsg.textContent       = 'Ready to launch.';
+          }
+        });
       });
     });
   }

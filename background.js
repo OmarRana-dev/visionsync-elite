@@ -135,8 +135,19 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       let attempts = 0;
       let injectAttempts = 0;
 
+      // Set auto-joining state
+      chrome.storage.local.set({ isAutoJoining: true, autoJoinTabId: newTab.id });
+
+      const cleanupAutoJoin = () => {
+        chrome.storage.local.set({ isAutoJoining: false, autoJoinTabId: null });
+      };
+
       const attemptJoin = () => {
-        if (joined || attempts > 120) return; // Try for up to 60 seconds (500ms * 120) for very slow sites
+        if (joined) return;
+        if (attempts > 120) {
+          cleanupAutoJoin();
+          return; // Try for up to 60 seconds (500ms * 120) for very slow sites
+        }
         attempts++;
 
         // Try to send the JOIN_ROOM message
@@ -149,6 +160,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         }, (response) => {
           if (!chrome.runtime.lastError && response && response.success) {
             joined = true;
+            cleanupAutoJoin();
             console.log('[VisionSync] Auto-join successful!');
           } else {
             // If message failed (script not there) or we got an error, we might need to re-inject
@@ -187,6 +199,11 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 // Clean up state when a tab is closed
 chrome.tabs.onRemoved.addListener((tabId) => {
   activeTabs.delete(tabId);
+  chrome.storage.local.get(['autoJoinTabId'], (res) => {
+    if (res.autoJoinTabId === tabId) {
+      chrome.storage.local.set({ isAutoJoining: false, autoJoinTabId: null });
+    }
+  });
 });
 
 // Watch for URL changes on active tabs (SPA navigation)
