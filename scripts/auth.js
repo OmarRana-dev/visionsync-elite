@@ -1,12 +1,10 @@
 // auth.js — VisionSync Elite | Google Sign-In via Chrome Identity API + Firebase Firestore
-// ⚠️ Replace GOOGLE_CLIENT_ID below with your Web Client ID from Firebase > Authentication > Sign-in method > Google
 
 const FIREBASE_CONFIG = {
   apiKey: "AIzaSyBMLd0WLDelhXVXbZ-MZUlFo7nxt9pauQA",
   projectId: "visionsync-elite",
 };
 
-// ⚠️ REPLACE THIS with your Web Client ID from Firebase Authentication > Sign-in method > Google
 const GOOGLE_CLIENT_ID = '75586347526-si4j7otvq6ngl8iabsbmm0m9b05u13po.apps.googleusercontent.com';
 
 const FIRESTORE_BASE = `https://firestore.googleapis.com/v1/projects/${FIREBASE_CONFIG.projectId}/databases/(default)/documents`;
@@ -28,13 +26,17 @@ async function signInWithGoogle() {
       { url: authUrl, interactive: true },
       (redirectUrl) => {
         if (chrome.runtime.lastError || !redirectUrl) {
-          reject(chrome.runtime.lastError || new Error('Auth cancelled'));
+          reject(new Error(chrome.runtime.lastError?.message || 'Auth was cancelled'));
           return;
         }
         // Extract the access_token from the hash fragment
-        const params = new URLSearchParams(redirectUrl.replace(/.*#/, ''));
+        const hashPart = redirectUrl.includes('#') ? redirectUrl.split('#')[1] : redirectUrl.split('?')[1];
+        const params = new URLSearchParams(hashPart);
         const token = params.get('access_token');
-        if (!token) { reject(new Error('No token in redirect')); return; }
+        if (!token) {
+          reject(new Error('No access token found in redirect URL'));
+          return;
+        }
         resolve(token);
       }
     );
@@ -48,50 +50,58 @@ async function fetchGoogleProfile(accessToken) {
   const res = await fetch('https://www.googleapis.com/oauth2/v2/userinfo', {
     headers: { Authorization: `Bearer ${accessToken}` }
   });
-  if (!res.ok) throw new Error('Failed to fetch user info');
+  if (!res.ok) throw new Error(`Failed to fetch profile: ${res.status}`);
   return res.json(); // { id, name, email, picture }
 }
 
 // ─────────────────────────────────────────────
-// Save / update user document in Firestore
+// Save / update user document in Firestore (non-blocking)
 // ─────────────────────────────────────────────
 async function saveUserToFirestore(profile) {
-  const url = `${FIRESTORE_BASE}/users/${profile.id}?key=${FIREBASE_CONFIG.apiKey}`;
-  await fetch(url, {
-    method: 'PATCH',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      fields: {
-        name:     { stringValue: profile.name },
-        email:    { stringValue: profile.email },
-        photo:    { stringValue: profile.picture || '' },
-        googleId: { stringValue: profile.id },
-        lastSeen: { timestampValue: new Date().toISOString() },
-      }
-    })
-  });
+  try {
+    const url = `${FIRESTORE_BASE}/users/${profile.id}?key=${FIREBASE_CONFIG.apiKey}`;
+    const res = await fetch(url, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        fields: {
+          name:     { stringValue: profile.name },
+          email:    { stringValue: profile.email },
+          photo:    { stringValue: profile.picture || '' },
+          googleId: { stringValue: profile.id },
+          lastSeen: { timestampValue: new Date().toISOString() },
+        }
+      })
+    });
+    if (!res.ok) console.warn('[VisionSync] Firestore save failed (non-critical):', await res.text());
+  } catch (err) {
+    // Firestore failure is non-critical — user is still locally authenticated
+    console.warn('[VisionSync] Firestore error (non-critical):', err.message);
+  }
 }
 
 // ─────────────────────────────────────────────
-// Full login flow: Sign in → fetch profile → save to DB → cache locally
+// Full login flow: OAuth → profile → persist locally → sync to DB
 // ─────────────────────────────────────────────
 async function loginWithGoogle() {
   const token = await signInWithGoogle();
   const profile = await fetchGoogleProfile(token);
-  await saveUserToFirestore(profile);
 
-  // Cache in local extension storage for instant access on popup open
-  await chrome.storage.local.set({
-    vsUser: {
-      name:    profile.name,
-      email:   profile.email,
-      photo:   profile.picture,
-      googleId: profile.id,
-      token:   token
-    }
-  });
+  // CRITICAL: Save to local storage FIRST, before any network calls that might fail
+  const vsUser = {
+    name:    profile.name,
+    email:   profile.email,
+    photo:   profile.picture || '',
+    googleId: profile.id,
+    token:   token
+  };
 
-  return profile;
+  await new Promise((resolve) => chrome.storage.local.set({ vsUser }, resolve));
+
+  // Then attempt Firestore sync (failure won't break auth)
+  saveUserToFirestore(profile); // intentionally NOT awaited
+
+  return vsUser;
 }
 
 // ─────────────────────────────────────────────
@@ -109,7 +119,7 @@ async function getCurrentUser() {
 // Sign out — clear local cache
 // ─────────────────────────────────────────────
 async function signOut() {
-  await chrome.storage.local.remove(['vsUser']);
+  await new Promise((resolve) => chrome.storage.local.remove(['vsUser'], resolve));
 }
 
 // Export for use in popup.js
