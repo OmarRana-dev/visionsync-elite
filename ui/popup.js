@@ -68,6 +68,16 @@ document.addEventListener('DOMContentLoaded', () => {
     // Pre-fill display name with Google name
     usernameInput.value = user.name || '';
     chrome.storage.local.set({ userName: user.name });
+
+    // Apply Global Theme
+    document.body.className = ''; // reset
+    if (user.theme === 'rapunzel' || user.theme === 'magic') {
+      document.body.classList.add('theme-rapunzel');
+    } else if (user.theme === 'bts') {
+      document.body.classList.add('theme-bts');
+    } else if (user.theme === 'dev' || user.theme === 'owner-dev') {
+      document.body.classList.add('theme-owner-dev');
+    }
   }
 
   // ── Auth Listeners ─────────────────────────────────────
@@ -145,8 +155,9 @@ document.addEventListener('DOMContentLoaded', () => {
         throw new Error('This code has already been redeemed.');
       }
 
-      // 3. Mark code as redeemed
-      const updateCodeUrl = `${FIRESTORE_BASE}/codes/${code}?key=${FIREBASE_CONFIG.apiKey}&updateMask.fieldPaths=isRedeemed&updateMask.fieldPaths=redeemedBy`;
+      // 3. Mark code as redeemed securely (Atomic Transaction using Precondition)
+      const updateTime = codeData.updateTime;
+      const updateCodeUrl = `${FIRESTORE_BASE}/codes/${code}?key=${FIREBASE_CONFIG.apiKey}&updateMask.fieldPaths=isRedeemed&updateMask.fieldPaths=redeemedBy&currentDocument.updateTime=${updateTime}`;
       const updateCodeRes = await fetch(updateCodeUrl, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
@@ -157,7 +168,10 @@ document.addEventListener('DOMContentLoaded', () => {
           }
         })
       });
-      if (!updateCodeRes.ok) throw new Error('Failed to mark code as redeemed.');
+      if (!updateCodeRes.ok) {
+        if (updateCodeRes.status === 412) throw new Error('Too slow! Someone else just redeemed this code.');
+        throw new Error('Failed to mark code as redeemed.');
+      }
 
       // 4. Update User's Theme in Firestore
       const updateUserUrl = `${FIRESTORE_BASE}/users/${user.googleId}?key=${FIREBASE_CONFIG.apiKey}&updateMask.fieldPaths=theme`;

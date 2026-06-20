@@ -103,14 +103,6 @@ async function loginWithGoogle() {
   let theme = dbData.theme;
   let role = dbData.role;
 
-  // --- AUTO-ASSIGN OWNER ROLES ---
-  if (profile.email === 'omarrana190@gmail.com' || profile.email === 'simsimboy09@gmail.com') {
-    role = 'owner';
-    theme = 'owner-dev';
-  } else if (profile.email === 'abeeraali2468@gmail.com') {
-    role = 'owner';
-    theme = 'magic'; // Rapunzel theme
-  }
 
   const vsUser = {
     name:    profile.name,
