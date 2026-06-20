@@ -81,13 +81,6 @@ document.addEventListener('DOMContentLoaded', () => {
     if (tabsList[0]) {
       const url = tabsList[0].url || '';
       const isMovieSite = url.includes('moviebox') || url.includes('netmirror') || url.includes('dailymotion');
-      
-      // If we are not on a supported movie site, redirect to the Global Lobby
-      if (!isMovieSite) {
-        chrome.tabs.create({ url: chrome.runtime.getURL('ui/lobby.html') });
-        window.close(); // Close popup
-        return;
-      }
 
       chrome.tabs.sendMessage(tabsList[0].id, { type: 'GET_STATUS' }, (response) => {
         if (!chrome.runtime.lastError && response && response.status === 'PONG') {
@@ -212,6 +205,15 @@ document.addEventListener('DOMContentLoaded', () => {
       statusMsg.textContent = `Error: ${err.message}`;
     }
   });
+
+  // --- Open Lobby ---
+  const lobbyBtn = document.getElementById('lobbyBtn');
+  if (lobbyBtn) {
+    lobbyBtn.addEventListener('click', () => {
+      chrome.tabs.create({ url: chrome.runtime.getURL('ui/lobby.html') });
+      window.close();
+    });
+  }
 
   // --- Core Join Function ---
   async function triggerJoinRoom(roomId, isCreate = false) {
