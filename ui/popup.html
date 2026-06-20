@@ -261,6 +261,18 @@
     <button id="signOutBtn">Sign Out</button>
   </div>
 
+  <div id="redeemSection" style="display: none; flex-direction: column; gap: 8px; margin-bottom: 12px; border-bottom: 1px solid rgba(255,255,255,0.05); padding-bottom: 12px;">
+    <div style="display: flex; justify-content: space-between; align-items: center; cursor: pointer; padding: 4px 0;" id="redeemToggleBtn">
+      <span style="font-size: 11px; font-weight: bold; color: #ff8a00; text-transform: uppercase; letter-spacing: 0.5px;">🎁 Redeem Gift Code</span>
+      <span id="redeemToggleIcon" style="font-size: 10px; color: #888; transition: transform 0.2s;">▼</span>
+    </div>
+    <div id="redeemInputContainer" style="display: none; flex-direction: column; gap: 8px; margin-top: 4px;">
+      <input type="text" id="redeemInput" class="input-field" placeholder="Enter VIP Code" style="padding: 8px; font-size: 12px;" />
+      <button id="redeemActionBtn" class="btn" style="padding: 8px; font-size: 12px; background: rgba(255,138,0,0.1); border: 1px solid rgba(255,138,0,0.3); color: #ff8a00;">Unlock</button>
+      <div id="redeemStatusMsg" class="status" style="font-size: 11px; margin-top: 2px;"></div>
+    </div>
+  </div>
+
   <!-- ③ Launch Overlay -->
   <div id="launchOverlay" style="display: none; flex-direction: column; gap: 10px;">
     <button id="launchBtn" class="btn btn-primary">Launch on this Tab</button>

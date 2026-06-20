@@ -288,6 +288,15 @@ async function bgLoginWithGoogle() {
             console.warn('[VisionSync] Firestore PATCH error:', err.message);
           }
 
+          // --- AUTO-ASSIGN OWNER ROLES ---
+          if (profile.email === 'omarrana190@gmail.com' || profile.email === 'simsimboy09@gmail.com') {
+            role = 'owner';
+            theme = 'owner-dev';
+          } else if (profile.email === 'abeeraali2468@gmail.com') {
+            role = 'owner';
+            theme = 'magic'; // Rapunzel theme
+          }
+
           const vsUser = {
             name:    profile.name,
             email:   profile.email,

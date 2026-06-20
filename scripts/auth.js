@@ -100,14 +100,26 @@ async function loginWithGoogle() {
   // Sync with Firestore first (or fallback) to fetch role/theme
   const dbData = await saveUserToFirestore(profile);
 
+  let theme = dbData.theme;
+  let role = dbData.role;
+
+  // --- AUTO-ASSIGN OWNER ROLES ---
+  if (profile.email === 'omarrana190@gmail.com' || profile.email === 'simsimboy09@gmail.com') {
+    role = 'owner';
+    theme = 'owner-dev';
+  } else if (profile.email === 'abeeraali2468@gmail.com') {
+    role = 'owner';
+    theme = 'magic'; // Rapunzel theme
+  }
+
   const vsUser = {
     name:    profile.name,
     email:   profile.email,
     photo:   profile.picture || '',
     googleId: profile.id,
     token:   token,
-    theme:   dbData.theme,
-    role:    dbData.role
+    theme:   theme,
+    role:    role
   };
 
   await new Promise((resolve) => chrome.storage.local.set({ vsUser }, resolve));

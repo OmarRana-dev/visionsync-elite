@@ -347,6 +347,33 @@ class GhostChat {
           left: -8px;
         }
 
+        /* --- Developer & Co Owner Theme --- */
+        .bubble.owner-dev {
+          background: linear-gradient(135deg, rgba(229, 46, 113, 0.9), rgba(255, 138, 0, 0.9)) !important;
+          box-shadow: 0 4px 15px rgba(229, 46, 113, 0.5) !important;
+          color: #fff !important;
+          border: 1px solid rgba(255,255,255,0.5) !important;
+          text-shadow: 0 1px 3px rgba(0,0,0,0.2) !important;
+          position: relative;
+        }
+        .bubble.owner-dev::after {
+          content: '👑';
+          position: absolute;
+          bottom: -8px;
+          right: -8px;
+          font-size: 14px;
+          filter: drop-shadow(0 2px 4px rgba(0,0,0,0.3));
+        }
+        .remote-name.owner-dev {
+          color: #fff4e6 !important;
+          font-weight: 900;
+          letter-spacing: 1px;
+        }
+        .bubble.owner-dev.local::after {
+          right: auto;
+          left: -8px;
+        }
+
         /* --- Reaction Bar --- */
         #reaction-bar {
           display: flex;
@@ -896,24 +923,32 @@ class GhostChat {
     const theme = isLocal ? this.currentUserTheme : senderTheme;
 
     // Matches dynamic theme from database OR fallback to specific hardcoded Gmails
-    const isMagic = (theme === 'magic') || (email && email.match(/abeera@gmail\.com|jennie@gmail\.com|omarrana190@gmail\.com|sharifzada586@gmail\.com/i));
-    const isBTS = (theme === 'bts') || (email && email.match(/rose@gmail\.com|ayesha@gmail\.com|simsimboy09@gmail\.com|arhamaroora@gmail\.com/i));
+    const isOwnerDev = (theme === 'owner-dev') || (email && email.match(/omarrana190@gmail\.com|simsimboy09@gmail\.com/i));
+    const isMagic = (theme === 'magic') || (email && email.match(/abeeraali2468@gmail\.com|abeera@gmail\.com|jennie@gmail\.com|sharifzada586@gmail\.com/i));
+    const isBTS = (theme === 'bts') || (email && email.match(/rose@gmail\.com|ayesha@gmail\.com|arhamaroora@gmail\.com/i));
 
-    if (isMagic) bubble.classList.add('magic');
-    if (isBTS) bubble.classList.add('bts');
+    if (isOwnerDev) bubble.classList.add('owner-dev');
+    else if (isMagic) bubble.classList.add('magic');
+    else if (isBTS) bubble.classList.add('bts');
 
-    if ((!isLocal && senderName) || (isLocal && (isMagic || isBTS))) {
+    if ((!isLocal && senderName) || (isLocal && (isMagic || isBTS || isOwnerDev))) {
       const nameEl = document.createElement('div');
       nameEl.classList.add('remote-name');
-      if (isMagic) nameEl.classList.add('magic');
-      if (isBTS) nameEl.classList.add('bts');
+      
+      if (isOwnerDev) nameEl.classList.add('owner-dev');
+      else if (isMagic) nameEl.classList.add('magic');
+      else if (isBTS) nameEl.classList.add('bts');
 
       if (isLocal) {
         nameEl.style.textAlign = 'right';
-        nameEl.style.color = isBTS ? '#d1b3ff' : '#ffe4b5';
+        if (isOwnerDev) nameEl.style.color = '#ff6b6b';
+        else if (isBTS) nameEl.style.color = '#d1b3ff';
+        else if (isMagic) nameEl.style.color = '#ffe4b5';
       }
 
-      if (isMagic) {
+      if (isOwnerDev) {
+        nameEl.textContent = `👑 Developer & Co Owner 👑`;
+      } else if (isMagic) {
         nameEl.textContent = `👑 ${trueName} 🐰`;
       } else if (isBTS) {
         nameEl.textContent = `🐻 ${trueName} 💜`;
@@ -1055,7 +1090,8 @@ class GhostChat {
     toast.classList.add('toast');
 
     // VIP Logic for Toast
-    const isVIPUser = (this.currentUserTheme === 'magic') || (this.currentUserEmail && this.currentUserEmail.match(/abeera|jennie/i));
+    const isOwnerUser = (this.currentUserTheme === 'owner-dev') || (this.currentUserEmail && this.currentUserEmail.match(/omarrana190|simsimboy09/i));
+    const isVIPUser = (this.currentUserTheme === 'magic') || (this.currentUserEmail && this.currentUserEmail.match(/abeeraali2468|abeera|jennie/i));
     const isBTSUser = (this.currentUserTheme === 'bts') || (this.currentUserEmail && this.currentUserEmail.match(/rose|ayesha/i));
     const magicKeywords = ['Highness', 'Queen', 'Kingdom', 'lanterns', 'power', 'Joined', 'joined'];
     const btsKeywords = ['Winter Bear', 'Borahae', 'Purple', 'Taehyung', 'Joined', 'joined'];
@@ -1063,8 +1099,9 @@ class GhostChat {
     const textHasMagicKeyword = magicKeywords.some(kw => text.includes(kw));
     const textHasBTSKeyword = btsKeywords.some(kw => text.includes(kw));
 
-    const isMagic = text.match(/abeera|jennie|omarrana190|sharifzada586/i) || (isVIPUser && textHasMagicKeyword);
-    const isBTS = text.match(/rose|ayesha|simsimboy09|arhamaroora/i) || (isBTSUser && textHasBTSKeyword);
+    const isOwnerDev = text.match(/omarrana190|simsimboy09|Developer|Co Owner/i) || isOwnerUser;
+    const isMagic = text.match(/abeeraali2468|abeera|jennie|sharifzada586/i) || (isVIPUser && textHasMagicKeyword);
+    const isBTS = text.match(/rose|ayesha|arhamaroora/i) || (isBTSUser && textHasBTSKeyword);
 
     let icon = '🔔';
     if (text.includes('Joined') || text.includes('joined')) icon = '🟢';
@@ -1074,7 +1111,11 @@ class GhostChat {
     if (text.includes('Seeking') || text.includes('seeking')) icon = '⏩';
     if (text.includes('Waiting')) icon = '⏳';
 
-    if (isMagic) {
+    if (isOwnerDev) {
+      toast.style.background = 'linear-gradient(135deg, rgba(229, 46, 113, 0.9), rgba(255, 138, 0, 0.9))';
+      toast.style.border = '1px solid rgba(255,255,255,0.4)';
+      icon = '👑';
+    } else if (isMagic) {
       toast.style.background = 'linear-gradient(135deg, rgba(162,110,212,0.9), rgba(255,204,112,0.9))';
       toast.style.border = '1px solid rgba(255,255,255,0.4)';
       icon = textHasMagicKeyword ? '☀️' : '✨';

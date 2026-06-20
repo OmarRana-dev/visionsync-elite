@@ -12,6 +12,14 @@ document.addEventListener('DOMContentLoaded', () => {
   const userEmailDisplay  = document.getElementById('userEmailDisplay');
   const signOutBtn        = document.getElementById('signOutBtn');
 
+  const redeemSection        = document.getElementById('redeemSection');
+  const redeemToggleBtn      = document.getElementById('redeemToggleBtn');
+  const redeemToggleIcon     = document.getElementById('redeemToggleIcon');
+  const redeemInputContainer = document.getElementById('redeemInputContainer');
+  const redeemInput          = document.getElementById('redeemInput');
+  const redeemActionBtn      = document.getElementById('redeemActionBtn');
+  const redeemStatusMsg      = document.getElementById('redeemStatusMsg');
+
   const launchOverlay     = document.getElementById('launchOverlay');
   const launchBtn         = document.getElementById('launchBtn');
   const lobbyBtn          = document.getElementById('lobbyBtn');
@@ -44,6 +52,7 @@ document.addEventListener('DOMContentLoaded', () => {
   function showLoginScreen() {
     loginScreen.style.display       = 'flex';
     userProfileStrip.style.display  = 'none';
+    redeemSection.style.display     = 'none';
     launchOverlay.style.display     = 'none';
     mainApp.style.display           = 'none';
     statusMsg.textContent           = '';
@@ -52,6 +61,7 @@ document.addEventListener('DOMContentLoaded', () => {
   function showUserProfile(user) {
     loginScreen.style.display       = 'none';
     userProfileStrip.style.display  = 'flex';
+    redeemSection.style.display     = 'flex';
     userAvatar.src = user.photo || 'icons/icon48.png';
     userNameDisplay.textContent  = user.name || 'User';
     userEmailDisplay.textContent = user.email || '';
@@ -83,6 +93,98 @@ document.addEventListener('DOMContentLoaded', () => {
   signOutBtn.addEventListener('click', async () => {
     await window.vsAuth.signOut();
     showLoginScreen();
+  });
+
+  // ── Redeem Code Logic ──────────────────────────────────
+  redeemToggleBtn.addEventListener('click', () => {
+    if (redeemInputContainer.style.display === 'none') {
+      redeemInputContainer.style.display = 'flex';
+      redeemToggleIcon.style.transform = 'rotate(180deg)';
+    } else {
+      redeemInputContainer.style.display = 'none';
+      redeemToggleIcon.style.transform = 'rotate(0deg)';
+    }
+  });
+
+  redeemActionBtn.addEventListener('click', async () => {
+    const code = redeemInput.value.trim().toUpperCase();
+    if (!code) {
+      redeemStatusMsg.style.color = '#ff2a6d';
+      redeemStatusMsg.textContent = 'Please enter a code.';
+      return;
+    }
+
+    redeemActionBtn.disabled = true;
+    redeemStatusMsg.style.color = '#888';
+    redeemStatusMsg.textContent = 'Verifying...';
+
+    try {
+      // 1. Fetch user to ensure we have their token/GoogleID
+      const userRes = await new Promise(res => chrome.storage.local.get(['vsUser'], res));
+      const user = userRes.vsUser;
+      if (!user) throw new Error('You must be signed in.');
+
+      // 2. Query Firestore for the code
+      // We'll just fetch the document from 'codes' collection directly
+      const FIRESTORE_BASE = 'https://firestore.googleapis.com/v1/projects/visionsync-elite/databases/(default)/documents';
+      const apiKeyQuery = '?key=API_KEY_HERE'; // We need the actual config, wait, config is in auth.js!
+      
+      const codeUrl = `${FIRESTORE_BASE}/codes/${code}?key=${window.FIREBASE_CONFIG.apiKey}`;
+      const codeRes = await fetch(codeUrl);
+      
+      if (!codeRes.ok) {
+        if (codeRes.status === 404) throw new Error('Invalid code. Does not exist.');
+        throw new Error('Failed to verify code.');
+      }
+
+      const codeData = await codeRes.json();
+      const isRedeemed = codeData.fields?.isRedeemed?.booleanValue;
+      const themeValue = codeData.fields?.value?.stringValue || 'premium';
+
+      if (isRedeemed) {
+        throw new Error('This code has already been redeemed.');
+      }
+
+      // 3. Mark code as redeemed
+      const updateCodeUrl = `${FIRESTORE_BASE}/codes/${code}?key=${window.FIREBASE_CONFIG.apiKey}&updateMask.fieldPaths=isRedeemed&updateMask.fieldPaths=redeemedBy`;
+      const updateCodeRes = await fetch(updateCodeUrl, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          fields: {
+            isRedeemed: { booleanValue: true },
+            redeemedBy: { stringValue: user.email }
+          }
+        })
+      });
+      if (!updateCodeRes.ok) throw new Error('Failed to mark code as redeemed.');
+
+      // 4. Update User's Theme in Firestore
+      const updateUserUrl = `${FIRESTORE_BASE}/users/${user.googleId}?key=${window.FIREBASE_CONFIG.apiKey}&updateMask.fieldPaths=theme`;
+      const updateUserRes = await fetch(updateUserUrl, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          fields: { theme: { stringValue: themeValue } }
+        })
+      });
+      if (!updateUserRes.ok) throw new Error('Failed to apply theme to profile.');
+
+      // 5. Update Local Storage
+      user.theme = themeValue;
+      await new Promise(res => chrome.storage.local.set({ vsUser: user }, res));
+
+      // Success!
+      redeemStatusMsg.style.color = '#25d366';
+      redeemStatusMsg.textContent = `Success! ${themeValue} theme unlocked! 🎉`;
+      redeemInput.value = '';
+      
+    } catch (err) {
+      redeemStatusMsg.style.color = '#ff2a6d';
+      redeemStatusMsg.textContent = err.message;
+    } finally {
+      redeemActionBtn.disabled = false;
+    }
   });
 
   // ── Tab Switching ──────────────────────────────────────
