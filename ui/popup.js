@@ -61,19 +61,23 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 
   // ── Auth Listeners ─────────────────────────────────────
-  googleSignInBtn.addEventListener('click', async () => {
+  googleSignInBtn.addEventListener('click', () => {
     googleSignInBtn.disabled = true;
-    loginStatusMsg.textContent = 'Opening Google Sign-In...';
-    try {
-      const user = await window.vsAuth.loginWithGoogle();
-      showUserProfile(user);
-      checkTabAndShowApp();
-    } catch (err) {
-      console.error('[VisionSync] Auth error:', err);
-      loginStatusMsg.textContent = `Sign-in failed: ${err.message}`;
-    } finally {
-      googleSignInBtn.disabled = false;
-    }
+    loginStatusMsg.textContent = 'Opening Google Sign-In... Please complete in the new window.';
+    chrome.runtime.sendMessage({ type: 'LOGIN_WITH_GOOGLE' }, (response) => {
+      if (chrome.runtime.lastError) {
+        // The popup likely closed because the Google window stole focus. This is normal.
+        return;
+      }
+      if (response && response.status === 'success') {
+        showUserProfile(response.user);
+        checkTabAndShowApp();
+      } else if (response && response.status === 'error') {
+        loginStatusMsg.textContent = `Sign-in failed: ${response.error}`;
+        console.error('[VisionSync] Auth error:', response.error);
+        googleSignInBtn.disabled = false;
+      }
+    });
   });
 
   signOutBtn.addEventListener('click', async () => {
