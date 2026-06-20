@@ -6,6 +6,16 @@ document.addEventListener('DOMContentLoaded', () => {
   const usernameInput = document.getElementById('usernameInput');
   const nameInputWrapper = document.getElementById('nameInputWrapper');
 
+  // Auth elements
+  const loginScreen = document.getElementById('loginScreen');
+  const loginStatusMsg = document.getElementById('loginStatusMsg');
+  const googleSignInBtn = document.getElementById('googleSignInBtn');
+  const userProfileStrip = document.getElementById('userProfileStrip');
+  const userAvatar = document.getElementById('userAvatar');
+  const userNameDisplay = document.getElementById('userNameDisplay');
+  const userEmailDisplay = document.getElementById('userEmailDisplay');
+  const signOutBtn = document.getElementById('signOutBtn');
+
   // Tabs
   const tabs = document.querySelectorAll('.tab');
   const tabContents = document.querySelectorAll('.tab-content');
@@ -26,17 +36,66 @@ document.addEventListener('DOMContentLoaded', () => {
   // Connected View
   const connectionControls = document.getElementById('connectionControls');
   const connectedView = document.getElementById('connectedView');
-  const activeRoomIdDisplay = document.getElementById('activeRoomIdDisplay');
   const currentRoomLink = document.getElementById('currentRoomLink');
   const copyActiveBtn = document.getElementById('copyActiveBtn');
   const leaveBtn = document.getElementById('leaveBtn');
 
-  // --- Initial Setup / PING ---
-  chrome.storage.local.get(['userName'], (result) => {
-    if (result.userName) {
-      usernameInput.value = result.userName;
+  // ── Auth State ─────────────────────────────────────────
+  let currentUser = null;
+
+  function showLoginScreen() {
+    loginScreen.style.display = 'flex';
+    userProfileStrip.style.display = 'none';
+    launchOverlay.style.display = 'none';
+    mainApp.style.display = 'none';
+  }
+
+  function showUserProfile(user) {
+    loginScreen.style.display = 'none';
+    userProfileStrip.style.display = 'flex';
+    userAvatar.src = user.photo || 'icons/icon48.png';
+    userNameDisplay.textContent = user.name;
+    userEmailDisplay.textContent = user.email;
+    // Pre-fill usernameInput with Google display name
+    usernameInput.value = user.name;
+    chrome.storage.local.set({ userName: user.name });
+  }
+
+  googleSignInBtn.addEventListener('click', async () => {
+    googleSignInBtn.disabled = true;
+    loginStatusMsg.textContent = 'Opening Google Sign-In...';
+    try {
+      const profile = await window.vsAuth.loginWithGoogle();
+      currentUser = profile;
+      showUserProfile({ name: profile.name, email: profile.email, photo: profile.picture });
+      initializePopup();
+    } catch (err) {
+      loginStatusMsg.textContent = 'Sign-in failed. Please try again.';
+      console.error('[VisionSync] Auth error:', err);
+    } finally {
+      googleSignInBtn.disabled = false;
     }
   });
+
+  signOutBtn.addEventListener('click', async () => {
+    await window.vsAuth.signOut();
+    currentUser = null;
+    showLoginScreen();
+  });
+
+  // ── Startup: check if already signed in ───────────────
+  window.vsAuth.getCurrentUser().then((user) => {
+    if (user) {
+      currentUser = user;
+      showUserProfile(user);
+      initializePopup();
+    } else {
+      showLoginScreen();
+    }
+  });
+
+  // ── Everything below runs only after login ─────────────
+  function initializePopup() {
 
   function showMainApp(msg, status = null) {
     launchOverlay.style.display = 'none';
@@ -313,5 +372,7 @@ document.addEventListener('DOMContentLoaded', () => {
       statusMsg.textContent = 'Left room.';
     }
   });
+
+  } // end initializePopup()
 
 });
