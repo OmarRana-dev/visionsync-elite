@@ -25,9 +25,13 @@
   ],
   "host_permissions": [
     "*://*.moviebox.com/*",
+    "*://*.movieboxpro.app/*",
+    "*://*.showbox.media/*",
     "*://*.netmirror.com/*",
+    "*://*.netmirror.app/*",
     "*://*.netflix.com/*",
     "*://*.dailymotion.com/*",
+    "*://*.youtube.com/*",
     "http://localhost:3000/*",
     "ws://localhost:3000/*",
     "https://*.onrender.com/*",

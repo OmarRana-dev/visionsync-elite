@@ -80,7 +80,7 @@ document.addEventListener('DOMContentLoaded', () => {
   chrome.tabs.query({ active: true, currentWindow: true }, (tabsList) => {
     if (tabsList[0]) {
       const url = tabsList[0].url || '';
-      const isMovieSite = url.includes('moviebox') || url.includes('netmirror') || url.includes('dailymotion');
+      const isMovieSite = url.includes('moviebox') || url.includes('netmirror') || url.includes('dailymotion') || url.includes('youtube.com/watch');
 
       chrome.tabs.sendMessage(tabsList[0].id, { type: 'GET_STATUS' }, (response) => {
         if (!chrome.runtime.lastError && response && response.status === 'PONG') {

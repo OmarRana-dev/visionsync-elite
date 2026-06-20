@@ -349,50 +349,71 @@ class SyncEngine {
   }
 
   findVideoElement() {
-    this.videoElement = document.querySelector('video');
+    const isYouTube = window.location.hostname.includes('youtube.com');
+
+    if (isYouTube) {
+      // YouTube has multiple video elements (ads + real player).
+      // Target the one inside the main player container.
+      const playerContainer = document.querySelector('#movie_player, .html5-video-player');
+      if (playerContainer) {
+        this.videoElement = playerContainer.querySelector('video');
+      }
+      // Fallback: pick the video with the longest duration (ads are short)
+      if (!this.videoElement) {
+        const all = Array.from(document.querySelectorAll('video'));
+        this.videoElement = all.sort((a, b) => (b.duration || 0) - (a.duration || 0))[0] || null;
+      }
+    } else {
+      this.videoElement = document.querySelector('video');
+    }
+
     if (this.videoElement) {
       this.attachVideoListeners();
     }
+  }
+
+  isYouTubeAdPlaying() {
+    return !!document.querySelector('.ad-showing, .ytp-ad-player-overlay');
   }
 
   attachVideoListeners() {
     if (!this.videoElement) return;
 
     this.videoElement.addEventListener('play', () => {
-      if (!this.isRemoteSyncing) {
+      if (!this.isRemoteSyncing && !this.isYouTubeAdPlaying()) {
         this.broadcast({ type: 'play', time: this.videoElement.currentTime });
       }
     });
 
     this.videoElement.addEventListener('pause', () => {
-      if (!this.isRemoteSyncing) {
+      if (!this.isRemoteSyncing && !this.isYouTubeAdPlaying()) {
         this.broadcast({ type: 'pause', time: this.videoElement.currentTime });
       }
     });
 
     this.videoElement.addEventListener('seeking', () => {
-      if (!this.isRemoteSyncing) {
+      if (!this.isRemoteSyncing && !this.isYouTubeAdPlaying()) {
         this.broadcast({ type: 'seek', time: this.videoElement.currentTime });
       }
     });
 
     // BUFFER LOCK: Pause others when one user buffers
     this.videoElement.addEventListener('waiting', () => {
-      if (!this.isRemoteSyncing) {
+      if (!this.isRemoteSyncing && !this.isYouTubeAdPlaying()) {
         this.broadcast({ type: 'waiting', time: this.videoElement.currentTime });
       }
     });
 
     // AUTO RESUME: Notify others when buffering finishes
     this.videoElement.addEventListener('playing', () => {
-      if (!this.isRemoteSyncing) {
+      if (!this.isRemoteSyncing && !this.isYouTubeAdPlaying()) {
         this.broadcast({ type: 'playing', time: this.videoElement.currentTime });
       }
     });
 
     // SPEED SYNC: Sync playback speed changes
     this.videoElement.addEventListener('ratechange', () => {
-      if (!this.isRemoteSyncing) {
+      if (!this.isRemoteSyncing && !this.isYouTubeAdPlaying()) {
         this.broadcast({ type: 'ratechange', time: this.videoElement.currentTime });
       }
     });

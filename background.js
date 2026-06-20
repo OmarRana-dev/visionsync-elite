@@ -127,7 +127,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         if (tabId === newTab.id && changeInfo.status === 'complete') {
           chrome.tabs.onUpdated.removeListener(listener);
           
-          // Small delay to ensure Dailymotion iframes are mounted
+          // Small delay to ensure iframes are mounted
           setTimeout(() => {
             // Launch extension
             injectExtensionIntoTab(newTab.id, () => {
@@ -142,7 +142,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
                 });
               }, 500); // Give scripts time to initialize
             });
-          }, 1500);
+          }, 2500);
         }
       };
       chrome.tabs.onUpdated.addListener(listener);
