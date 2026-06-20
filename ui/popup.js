@@ -129,7 +129,7 @@ document.addEventListener('DOMContentLoaded', () => {
       const FIRESTORE_BASE = 'https://firestore.googleapis.com/v1/projects/visionsync-elite/databases/(default)/documents';
       const apiKeyQuery = '?key=API_KEY_HERE'; // We need the actual config, wait, config is in auth.js!
       
-      const codeUrl = `${FIRESTORE_BASE}/codes/${code}?key=${window.FIREBASE_CONFIG.apiKey}`;
+      const codeUrl = `${FIRESTORE_BASE}/codes/${code}?key=${FIREBASE_CONFIG.apiKey}`;
       const codeRes = await fetch(codeUrl);
       
       if (!codeRes.ok) {
@@ -146,7 +146,7 @@ document.addEventListener('DOMContentLoaded', () => {
       }
 
       // 3. Mark code as redeemed
-      const updateCodeUrl = `${FIRESTORE_BASE}/codes/${code}?key=${window.FIREBASE_CONFIG.apiKey}&updateMask.fieldPaths=isRedeemed&updateMask.fieldPaths=redeemedBy`;
+      const updateCodeUrl = `${FIRESTORE_BASE}/codes/${code}?key=${FIREBASE_CONFIG.apiKey}&updateMask.fieldPaths=isRedeemed&updateMask.fieldPaths=redeemedBy`;
       const updateCodeRes = await fetch(updateCodeUrl, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
@@ -160,7 +160,7 @@ document.addEventListener('DOMContentLoaded', () => {
       if (!updateCodeRes.ok) throw new Error('Failed to mark code as redeemed.');
 
       // 4. Update User's Theme in Firestore
-      const updateUserUrl = `${FIRESTORE_BASE}/users/${user.googleId}?key=${window.FIREBASE_CONFIG.apiKey}&updateMask.fieldPaths=theme`;
+      const updateUserUrl = `${FIRESTORE_BASE}/users/${user.googleId}?key=${FIREBASE_CONFIG.apiKey}&updateMask.fieldPaths=theme`;
       const updateUserRes = await fetch(updateUserUrl, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
