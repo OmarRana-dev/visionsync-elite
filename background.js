@@ -136,7 +136,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       let injectAttempts = 0;
 
       const attemptJoin = () => {
-        if (joined || attempts > 30) return; // Try for up to 15 seconds (500ms * 30)
+        if (joined || attempts > 120) return; // Try for up to 60 seconds (500ms * 120) for very slow sites
         attempts++;
 
         // Try to send the JOIN_ROOM message
@@ -152,7 +152,8 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
             console.log('[VisionSync] Auto-join successful!');
           } else {
             // If message failed (script not there) or we got an error, we might need to re-inject
-            if (injectAttempts < 5 && attempts % 4 === 1) {
+            // Inject every 4 seconds (8 * 500ms)
+            if (injectAttempts < 15 && attempts % 8 === 1) {
               injectAttempts++;
               injectExtensionIntoTab(newTab.id);
             }
