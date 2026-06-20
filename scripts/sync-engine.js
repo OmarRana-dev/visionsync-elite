@@ -257,7 +257,7 @@ class SyncEngine {
     this.socket.on('chat-message', (data) => {
       // PREVENT DUPLICATES: Only add if message is from SOMEONE ELSE
       if (data.senderId !== this.socket.id) {
-        this.callChat('addMessage', data.text, false, data.sender, data.replyTo, data.msgId);
+        this.callChat('addMessage', data.text, false, data.sender, data.replyTo, data.msgId, data.userEmail, data.userTheme);
       }
     });
 

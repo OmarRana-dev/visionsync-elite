@@ -59,7 +59,10 @@ async function fetchGoogleProfile(accessToken) {
 // ─────────────────────────────────────────────
 async function saveUserToFirestore(profile) {
   try {
-    const url = `${FIRESTORE_BASE}/users/${profile.id}?key=${FIREBASE_CONFIG.apiKey}`;
+    const fieldsMask = ['name', 'email', 'photo', 'googleId', 'lastSeen'];
+    const updateMask = fieldsMask.map(f => `updateMask.fieldPaths=${f}`).join('&');
+    const url = `${FIRESTORE_BASE}/users/${profile.id}?key=${FIREBASE_CONFIG.apiKey}&${updateMask}`;
+
     const res = await fetch(url, {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
@@ -73,11 +76,18 @@ async function saveUserToFirestore(profile) {
         }
       })
     });
-    if (!res.ok) console.warn('[VisionSync] Firestore save failed (non-critical):', await res.text());
+    if (res.ok) {
+      const data = await res.json();
+      return {
+        theme: data.fields?.theme?.stringValue || '',
+        role: data.fields?.role?.stringValue || ''
+      };
+    }
+    console.warn('[VisionSync] Firestore PATCH failed:', await res.text());
   } catch (err) {
-    // Firestore failure is non-critical — user is still locally authenticated
-    console.warn('[VisionSync] Firestore error (non-critical):', err.message);
+    console.warn('[VisionSync] Firestore error:', err.message);
   }
+  return { theme: '', role: '' };
 }
 
 // ─────────────────────────────────────────────
@@ -87,19 +97,20 @@ async function loginWithGoogle() {
   const token = await signInWithGoogle();
   const profile = await fetchGoogleProfile(token);
 
-  // CRITICAL: Save to local storage FIRST, before any network calls that might fail
+  // Sync with Firestore first (or fallback) to fetch role/theme
+  const dbData = await saveUserToFirestore(profile);
+
   const vsUser = {
     name:    profile.name,
     email:   profile.email,
     photo:   profile.picture || '',
     googleId: profile.id,
-    token:   token
+    token:   token,
+    theme:   dbData.theme,
+    role:    dbData.role
   };
 
   await new Promise((resolve) => chrome.storage.local.set({ vsUser }, resolve));
-
-  // Then attempt Firestore sync (failure won't break auth)
-  saveUserToFirestore(profile); // intentionally NOT awaited
 
   return vsUser;
 }

@@ -25,6 +25,19 @@ class GhostChat {
     this.shadowRoot = this.container.attachShadow({ mode: 'open' });
     this.render();
     this.localSocketId = 'local';
+
+    this.currentUserEmail = '';
+    this.currentUserTheme = '';
+    this.currentUserRole = '';
+
+    chrome.storage.local.get(['vsUser'], (res) => {
+      if (res.vsUser) {
+        this.currentUserEmail = res.vsUser.email || '';
+        this.currentUserTheme = res.vsUser.theme || '';
+        this.currentUserRole = res.vsUser.role || '';
+      }
+    });
+
     this.setupDrag();
     this.setupListeners();
     this.setupEmojiReactions();
@@ -711,13 +724,15 @@ class GhostChat {
         const msgId = 'msg-' + Date.now() + '-' + Math.floor(Math.random() * 1000);
 
         // Add locally immediately
-        this.addMessage(text, true, '', this.currentReply, msgId);
+        this.addMessage(text, true, '', this.currentReply, msgId, this.currentUserEmail, this.currentUserTheme);
 
         if (text) {
           this.callEngine('broadcast', {
             type: 'CHAT',
             text: text,
             sender: this.lastUserName,
+            userEmail: this.currentUserEmail || '',
+            userTheme: this.currentUserTheme || '',
             replyTo: this.currentReply,
             msgId: msgId
           });
@@ -870,15 +885,19 @@ class GhostChat {
     });
   }
 
-  addMessage(text, isLocal, senderName = '', replyTo = null, msgId = null) {
+  addMessage(text, isLocal, senderName = '', replyTo = null, msgId = null, senderEmail = '', senderTheme = '') {
     const bubble = document.createElement('div');
     bubble.classList.add('bubble', isLocal ? 'local' : 'remote');
     bubble.dataset.msgId = msgId || ('msg-' + Date.now());
 
     // 1. NAME (Remote or VIP Local)
     const trueName = isLocal ? this.lastUserName : senderName;
-    const isMagic = trueName && trueName.match(/abeera|jennie/i);
-    const isBTS = trueName && trueName.match(/rose|ayesha/i);
+    const email = isLocal ? this.currentUserEmail : senderEmail;
+    const theme = isLocal ? this.currentUserTheme : senderTheme;
+
+    // Matches dynamic theme from database OR fallback to specific hardcoded Gmails
+    const isMagic = (theme === 'magic') || (email && email.match(/abeera@gmail\.com|jennie@gmail\.com|omarrana190@gmail\.com|sharifzada586@gmail\.com/i));
+    const isBTS = (theme === 'bts') || (email && email.match(/rose@gmail\.com|ayesha@gmail\.com|simsimboy09@gmail\.com|arhamaroora@gmail\.com/i));
 
     if (isMagic) bubble.classList.add('magic');
     if (isBTS) bubble.classList.add('bts');
@@ -1036,16 +1055,16 @@ class GhostChat {
     toast.classList.add('toast');
 
     // VIP Logic for Toast
-    const isVIPUser = this.lastUserName && this.lastUserName.match(/abeera|jennie/i);
-    const isBTSUser = this.lastUserName && this.lastUserName.match(/rose|ayesha/i);
+    const isVIPUser = (this.currentUserTheme === 'magic') || (this.currentUserEmail && this.currentUserEmail.match(/abeera|jennie/i));
+    const isBTSUser = (this.currentUserTheme === 'bts') || (this.currentUserEmail && this.currentUserEmail.match(/rose|ayesha/i));
     const magicKeywords = ['Highness', 'Queen', 'Kingdom', 'lanterns', 'power', 'Joined', 'joined'];
     const btsKeywords = ['Winter Bear', 'Borahae', 'Purple', 'Taehyung', 'Joined', 'joined'];
 
     const textHasMagicKeyword = magicKeywords.some(kw => text.includes(kw));
     const textHasBTSKeyword = btsKeywords.some(kw => text.includes(kw));
 
-    const isMagic = text.match(/abeera|jennie/i) || (isVIPUser && textHasMagicKeyword);
-    const isBTS = text.match(/rose|ayesha/i) || (isBTSUser && textHasBTSKeyword);
+    const isMagic = text.match(/abeera|jennie|omarrana190|sharifzada586/i) || (isVIPUser && textHasMagicKeyword);
+    const isBTS = text.match(/rose|ayesha|simsimboy09|arhamaroora/i) || (isBTSUser && textHasBTSKeyword);
 
     let icon = '🔔';
     if (text.includes('Joined') || text.includes('joined')) icon = '🟢';

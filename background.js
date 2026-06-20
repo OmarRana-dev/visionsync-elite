@@ -254,31 +254,51 @@ async function bgLoginWithGoogle() {
           if (!res.ok) throw new Error(`Failed to fetch profile: ${res.status}`);
           const profile = await res.json();
           
+          let theme = '';
+          let role = '';
+
+          try {
+            // Using updateMask so we don't overwrite manually added fields (like 'theme' or 'role') in the console
+            const fieldsMask = ['name', 'email', 'photo', 'googleId', 'lastSeen'];
+            const updateMask = fieldsMask.map(f => `updateMask.fieldPaths=${f}`).join('&');
+            const url = `${FIRESTORE_BASE}/users/${profile.id}?key=${FIREBASE_CONFIG.apiKey}&${updateMask}`;
+
+            const firestoreRes = await fetch(url, {
+              method: 'PATCH',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                fields: {
+                  name:     { stringValue: profile.name },
+                  email:    { stringValue: profile.email },
+                  photo:    { stringValue: profile.picture || '' },
+                  googleId: { stringValue: profile.id },
+                  lastSeen: { timestampValue: new Date().toISOString() },
+                }
+              })
+            });
+
+            if (firestoreRes.ok) {
+              const dbData = await firestoreRes.json();
+              theme = dbData.fields?.theme?.stringValue || '';
+              role = dbData.fields?.role?.stringValue || '';
+            } else {
+              console.warn('[VisionSync] Firestore PATCH non-ok status:', firestoreRes.status);
+            }
+          } catch (err) {
+            console.warn('[VisionSync] Firestore PATCH error:', err.message);
+          }
+
           const vsUser = {
             name:    profile.name,
             email:   profile.email,
             photo:   profile.picture || '',
             googleId: profile.id,
-            token:   token
+            token:   token,
+            theme:   theme,
+            role:    role
           };
           
           await new Promise((res) => chrome.storage.local.set({ vsUser }, res));
-          
-          // Fire and forget Firestore save
-          const url = `${FIRESTORE_BASE}/users/${profile.id}?key=${FIREBASE_CONFIG.apiKey}`;
-          fetch(url, {
-            method: 'PATCH',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              fields: {
-                name:     { stringValue: profile.name },
-                email:    { stringValue: profile.email },
-                photo:    { stringValue: profile.picture || '' },
-                googleId: { stringValue: profile.id },
-                lastSeen: { timestampValue: new Date().toISOString() },
-              }
-            })
-          }).catch(e => console.warn('Firestore sync failed', e));
 
           resolve(vsUser);
         } catch (err) {
