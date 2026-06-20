@@ -27,6 +27,7 @@
     "*://*.moviebox.com/*",
     "*://*.netmirror.com/*",
     "*://*.netflix.com/*",
+    "*://*.dailymotion.com/*",
     "http://localhost:3000/*",
     "ws://localhost:3000/*",
     "https://*.onrender.com/*",

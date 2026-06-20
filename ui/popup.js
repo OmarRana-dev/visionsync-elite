@@ -79,6 +79,16 @@ document.addEventListener('DOMContentLoaded', () => {
   // Check state on load
   chrome.tabs.query({ active: true, currentWindow: true }, (tabsList) => {
     if (tabsList[0]) {
+      const url = tabsList[0].url || '';
+      const isMovieSite = url.includes('moviebox') || url.includes('netmirror') || url.includes('dailymotion');
+      
+      // If we are not on a supported movie site, redirect to the Global Lobby
+      if (!isMovieSite) {
+        chrome.tabs.create({ url: chrome.runtime.getURL('ui/lobby.html') });
+        window.close(); // Close popup
+        return;
+      }
+
       chrome.tabs.sendMessage(tabsList[0].id, { type: 'GET_STATUS' }, (response) => {
         if (!chrome.runtime.lastError && response && response.status === 'PONG') {
           showMainApp('VisionSync Active!', response);
@@ -223,7 +233,8 @@ document.addEventListener('DOMContentLoaded', () => {
         type: 'JOIN_ROOM',
         roomId: roomId,
         userName: userName,
-        isCreate: isCreate
+        isCreate: isCreate,
+        movieUrl: tab.url
       }, (response) => {
          if (chrome.runtime.lastError || !response) {
             statusMsg.textContent = 'Error: Cannot reach video page. Please launch the extension first.';

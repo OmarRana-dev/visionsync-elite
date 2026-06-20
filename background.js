@@ -49,22 +49,102 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     const tabId = message.tabId;
     activeTabs.add(tabId);
     
-    // Inject necessary scripts sequentially
-      chrome.scripting.executeScript({
-        target: { tabId: tabId },
-        files: [
-          'scripts/socket.io.min.js',
-          'scripts/sync-engine.js',
-          'ui/ghost-chat.js',
-          'scripts/injector.js'
-        ]
-      }).then(() => {
-        sendResponse({ status: 'success', message: 'Injected successfully' });
-      }).catch((err) => {
-        console.error('Injection failed:', err);
-        sendResponse({ status: 'error', message: err.message });
-      });
-      return true; // Keep message channel open for async response
+    // Find the correct frame to inject into
+    chrome.webNavigation.getAllFrames({ tabId: tabId }, (frames) => {
+      let targetFrameId = 0; // Default to top frame
+      
+      if (frames) {
+        const dmFrame = frames.find(f => f.url && (
+          f.url.includes('geo.dailymotion.com') || 
+          f.url.includes('dailymotion.com/player') || 
+          f.url.includes('dailymotion.com/embed')
+        ));
+        if (dmFrame) {
+          targetFrameId = dmFrame.frameId;
+        }
+      }
+
+      if (targetFrameId === 0) {
+        // Inject everything into top frame
+        chrome.scripting.executeScript({
+          target: { tabId: tabId, frameIds: [0] },
+          files: [
+            'scripts/socket.io.min.js',
+            'scripts/sync-engine.js',
+            'ui/ghost-chat.js',
+            'scripts/injector.js'
+          ]
+        }).then(() => {
+          sendResponse({ status: 'success', message: 'Injected successfully' });
+        }).catch(err => {
+          sendResponse({ status: 'error', message: err.message });
+        });
+      } else {
+        // Cross-frame injection: Engine to iframe, UI to top frame
+        chrome.scripting.executeScript({
+          target: { tabId: tabId, frameIds: [targetFrameId] },
+          files: [
+            'scripts/socket.io.min.js',
+            'scripts/sync-engine.js',
+            'scripts/injector.js'
+          ]
+        });
+        chrome.scripting.executeScript({
+          target: { tabId: tabId, frameIds: [0] },
+          files: [
+            'ui/ghost-chat.js',
+            'scripts/injector.js'
+          ]
+        }).then(() => {
+          sendResponse({ status: 'success', message: 'Injected successfully across frames' });
+        }).catch(err => {
+          sendResponse({ status: 'error', message: err.message });
+        });
+      }
+    });
+    
+    return true; // Keep message channel open for async response
+  }
+
+  // Cross-Frame Relay Handlers
+  if (message.type === 'RELAY_TO_ENGINE' || message.type === 'RELAY_TO_CHAT') {
+    if (sender.tab && sender.tab.id) {
+      chrome.tabs.sendMessage(sender.tab.id, message).catch(() => {});
+    }
+    return false;
+  }
+
+  // AUTO JOIN ROOM LOGIC
+  if (message.type === 'AUTO_JOIN_ROOM') {
+    const { movieUrl, roomId, userName } = message;
+    
+    chrome.tabs.create({ url: movieUrl }, (newTab) => {
+      // Wait for the tab to load
+      const listener = (tabId, changeInfo) => {
+        if (tabId === newTab.id && changeInfo.status === 'complete') {
+          chrome.tabs.onUpdated.removeListener(listener);
+          
+          // Small delay to ensure Dailymotion iframes are mounted
+          setTimeout(() => {
+            // Launch extension
+            chrome.runtime.sendMessage({ type: 'LAUNCH_EXTENSION', tabId: newTab.id }, () => {
+              // Now automatically join
+              setTimeout(() => {
+                chrome.tabs.sendMessage(newTab.id, {
+                  type: 'JOIN_ROOM',
+                  roomId: roomId,
+                  userName: userName,
+                  isCreate: false,
+                  movieUrl: movieUrl
+                });
+              }, 500); // Give scripts time to initialize
+            });
+          }, 1500);
+        }
+      };
+      chrome.tabs.onUpdated.addListener(listener);
+    });
+    return true;
   }
 
   if (message.type === 'PANIC_TRIGGERED') {

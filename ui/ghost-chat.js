@@ -24,9 +24,31 @@ class GhostChat {
 
     this.shadowRoot = this.container.attachShadow({ mode: 'open' });
     this.render();
+    this.localSocketId = 'local';
     this.setupDrag();
     this.setupListeners();
     this.setupEmojiReactions();
+    
+    // Listen for cross-frame relay messages
+    chrome.runtime.onMessage.addListener((message) => {
+      if (message.type === 'RELAY_TO_CHAT') {
+        if (typeof this[message.method] === 'function') {
+          this[message.method](...message.args);
+        }
+      }
+    });
+  }
+
+  callEngine(method, ...args) {
+    if (window.visionSyncEngine) {
+      window.visionSyncEngine[method](...args);
+    } else {
+      chrome.runtime.sendMessage({ type: 'RELAY_TO_ENGINE', method, args });
+    }
+  }
+
+  setSocketId(id) {
+    this.localSocketId = id;
   }
 
   render() {
@@ -36,8 +58,6 @@ class GhostChat {
           position: fixed;
           top: 0;
           left: 0;
-          width: 100vw;
-          height: 100vh;
           z-index: 2147483647;
           pointer-events: none;
           display: none;
@@ -693,8 +713,8 @@ class GhostChat {
         // Add locally immediately
         this.addMessage(text, true, '', this.currentReply, msgId);
 
-        if (window.visionSyncEngine) {
-          window.visionSyncEngine.broadcast({
+        if (text) {
+          this.callEngine('broadcast', {
             type: 'CHAT',
             text: text,
             sender: this.lastUserName,
@@ -702,7 +722,6 @@ class GhostChat {
             msgId: msgId
           });
         }
-
         input.value = '';
         this.currentReply = null;
         this.shadowRoot.getElementById('reply-preview-bar').classList.remove('visible');
@@ -782,7 +801,7 @@ class GhostChat {
       <line x1="3" y1="3" x2="21" y2="21" stroke="rgba(255,255,255,0.4)" stroke-width="2.5"></line>
     `;
 
-    if (window.visionSyncEngine) window.visionSyncEngine.leaveRoom();
+    this.callEngine('leaveRoom');
     chrome.storage.local.remove(['currentRoomId', 'isJoined']);
     // Do NOT remove the shadow DOM container so it can be reused on rejoin
     console.log('[VisionSync Elite] UI Cleaned up securely without unmounting');
@@ -846,7 +865,7 @@ class GhostChat {
       item.addEventListener('click', () => {
         const emoji = item.dataset.emoji;
         this.triggerEmojiBurst(emoji);
-        if (window.visionSyncEngine) window.visionSyncEngine.broadcast({ type: 'EMOJI', emoji });
+        this.callEngine('broadcast', { type: 'EMOJI', emoji });
       });
     });
   }
@@ -924,14 +943,12 @@ class GhostChat {
         this.addReactionToBubble(bubble, newEmoji, 'local');
         picker.classList.remove('visible');
 
-        if (window.visionSyncEngine) {
-          window.visionSyncEngine.socket.emit('message-reaction', {
-            roomId: this.roomId,
-            msgId: bubble.dataset.msgId,
-            emoji: newEmoji,
-            senderId: window.visionSyncEngine.socket.id
-          });
-        }
+        this.callEngine('broadcast', {
+          type: 'MESSAGE_REACTION',
+          msgId: bubble.dataset.msgId,
+          emoji: newEmoji,
+          senderId: this.localSocketId
+        });
       };
       picker.appendChild(eBtn);
     });
@@ -976,12 +993,10 @@ class GhostChat {
     if (isLocal) {
       actions.querySelector('.delete-btn').addEventListener('click', () => {
         bubble.remove();
-        if (window.visionSyncEngine) {
-          window.visionSyncEngine.socket.emit('delete-message', {
-            roomId: this.roomId,
-            msgId: bubble.dataset.msgId
-          });
-        }
+        this.callEngine('broadcast', {
+          type: 'DELETE_MESSAGE',
+          msgId: bubble.dataset.msgId
+        });
       });
     }
 
@@ -1090,6 +1105,18 @@ class GhostChat {
     // Force scroll to bottom to fix full-screen "goes all the way up" issue
     setTimeout(() => this.scrollToBottom(), 50);
   }
+  deleteMessage(msgId) {
+    const bubble = this.shadowRoot.querySelector(`[data-msg-id="${msgId}"]`);
+    if (bubble) bubble.remove();
+  }
+
+  addReaction(msgId, emoji, senderId) {
+    const bubble = this.shadowRoot.querySelector(`[data-msg-id="${msgId}"]`);
+    if (bubble) {
+      this.addReactionToBubble(bubble, emoji, senderId);
+    }
+  }
+
   addReactionToBubble(bubble, emoji, senderId) {
     let container = bubble.querySelector('.reaction-badge-container');
     if (!container) {
@@ -1115,7 +1142,7 @@ class GhostChat {
 
     // 3. Render
     container.innerHTML = '';
-    const myId = window.visionSyncEngine ? window.visionSyncEngine.socket.id : 'local';
+    const myId = this.localSocketId || 'local';
 
     for (const e in bubble.reactions) {
       const badge = document.createElement('div');
