@@ -87,7 +87,7 @@ document.addEventListener('DOMContentLoaded', () => {
           showMainApp('VisionSync Active!', response);
         } else {
           // If script is missing, show the launch button
-          launchOverlay.style.display = 'block';
+          launchOverlay.style.display = 'flex';
           mainApp.style.display = 'none';
           statusMsg.textContent = 'Extension not active on this tab.';
         }

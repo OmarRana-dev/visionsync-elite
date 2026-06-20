@@ -36,6 +36,65 @@ function refreshActiveRooms() {
 // Start immediately
 initBackgroundSocket();
 
+
+function injectExtensionIntoTab(tabId, sendResponse) {
+  activeTabs.add(tabId);
+  
+  // Find the correct frame to inject into
+  chrome.webNavigation.getAllFrames({ tabId: tabId }, (frames) => {
+    let targetFrameId = 0; // Default to top frame
+    
+    if (frames) {
+      const dmFrame = frames.find(f => f.url && (
+        f.url.includes('geo.dailymotion.com') || 
+        f.url.includes('dailymotion.com/player') || 
+        f.url.includes('dailymotion.com/embed')
+      ));
+      if (dmFrame) {
+        targetFrameId = dmFrame.frameId;
+      }
+    }
+
+    if (targetFrameId === 0) {
+      // Inject everything into top frame
+      chrome.scripting.executeScript({
+        target: { tabId: tabId, frameIds: [0] },
+        files: [
+          'scripts/socket.io.min.js',
+          'scripts/sync-engine.js',
+          'ui/ghost-chat.js',
+          'scripts/injector.js'
+        ]
+      }).then(() => {
+        if(sendResponse) sendResponse({ status: 'success', message: 'Injected successfully' });
+      }).catch(err => {
+        if(sendResponse) sendResponse({ status: 'error', message: err.message });
+      });
+    } else {
+      // Cross-frame injection: Engine to iframe, UI to top frame
+      chrome.scripting.executeScript({
+        target: { tabId: tabId, frameIds: [targetFrameId] },
+        files: [
+          'scripts/socket.io.min.js',
+          'scripts/sync-engine.js',
+          'scripts/injector.js'
+        ]
+      });
+      chrome.scripting.executeScript({
+        target: { tabId: tabId, frameIds: [0] },
+        files: [
+          'ui/ghost-chat.js',
+          'scripts/injector.js'
+        ]
+      }).then(() => {
+        if(sendResponse) sendResponse({ status: 'success', message: 'Injected successfully across frames' });
+      }).catch(err => {
+        if(sendResponse) sendResponse({ status: 'error', message: err.message });
+      });
+    }
+  });
+}
+
 // Listen for messages from popup or content scripts
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   if (message.type === 'GET_ACTIVE_ROOMS_BG') {
@@ -46,64 +105,8 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   }
 
   if (message.type === 'LAUNCH_EXTENSION') {
-    const tabId = message.tabId;
-    activeTabs.add(tabId);
-    
-    // Find the correct frame to inject into
-    chrome.webNavigation.getAllFrames({ tabId: tabId }, (frames) => {
-      let targetFrameId = 0; // Default to top frame
-      
-      if (frames) {
-        const dmFrame = frames.find(f => f.url && (
-          f.url.includes('geo.dailymotion.com') || 
-          f.url.includes('dailymotion.com/player') || 
-          f.url.includes('dailymotion.com/embed')
-        ));
-        if (dmFrame) {
-          targetFrameId = dmFrame.frameId;
-        }
-      }
-
-      if (targetFrameId === 0) {
-        // Inject everything into top frame
-        chrome.scripting.executeScript({
-          target: { tabId: tabId, frameIds: [0] },
-          files: [
-            'scripts/socket.io.min.js',
-            'scripts/sync-engine.js',
-            'ui/ghost-chat.js',
-            'scripts/injector.js'
-          ]
-        }).then(() => {
-          sendResponse({ status: 'success', message: 'Injected successfully' });
-        }).catch(err => {
-          sendResponse({ status: 'error', message: err.message });
-        });
-      } else {
-        // Cross-frame injection: Engine to iframe, UI to top frame
-        chrome.scripting.executeScript({
-          target: { tabId: tabId, frameIds: [targetFrameId] },
-          files: [
-            'scripts/socket.io.min.js',
-            'scripts/sync-engine.js',
-            'scripts/injector.js'
-          ]
-        });
-        chrome.scripting.executeScript({
-          target: { tabId: tabId, frameIds: [0] },
-          files: [
-            'ui/ghost-chat.js',
-            'scripts/injector.js'
-          ]
-        }).then(() => {
-          sendResponse({ status: 'success', message: 'Injected successfully across frames' });
-        }).catch(err => {
-          sendResponse({ status: 'error', message: err.message });
-        });
-      }
-    });
-    
-    return true; // Keep message channel open for async response
+    injectExtensionIntoTab(message.tabId, sendResponse);
+    return true;
   }
 
   // Cross-Frame Relay Handlers
@@ -127,7 +130,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
           // Small delay to ensure Dailymotion iframes are mounted
           setTimeout(() => {
             // Launch extension
-            chrome.runtime.sendMessage({ type: 'LAUNCH_EXTENSION', tabId: newTab.id }, () => {
+            injectExtensionIntoTab(newTab.id, () => {
               // Now automatically join
               setTimeout(() => {
                 chrome.tabs.sendMessage(newTab.id, {
