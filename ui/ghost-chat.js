@@ -169,47 +169,82 @@ class GhostChat {
           border: none !important;
           box-shadow: none !important;
         }
-        :host(.fullscreen) #chat-header {
-          background: rgba(18, 18, 22, 0.7) !important;
-          backdrop-filter: blur(10px);
+        /* --- Floating Users Top Right --- */
+        #floating-users-container {
+          position: fixed;
+          top: 20px;
+          right: 20px;
+          display: flex;
+          gap: 12px;
+          flex-direction: row-reverse;
+          z-index: 10000;
+          pointer-events: none;
         }
-        :host(.fullscreen) #online-users-container {
-          background: rgba(18, 18, 22, 0.6) !important;
-          backdrop-filter: blur(10px);
-        }
-        :host(.fullscreen) #chat-input-container {
-          background: rgba(18, 18, 22, 0.7) !important;
-          backdrop-filter: blur(10px);
-        }
-
-        #chat-header {
-          padding: 14px 18px;
-          background: rgba(255, 255, 255, 0.03);
+        .floating-user {
           display: flex;
           flex-direction: column;
           align-items: center;
-          border-bottom: 1px solid rgba(255, 255, 255, 0.05);
-          cursor: grab;
+          gap: 4px;
+          animation: popInUser 0.4s cubic-bezier(0.19, 1, 0.22, 1);
         }
-        #chat-header:active {
-          cursor: grabbing;
+        @keyframes popInUser { from { transform: scale(0); opacity: 0; } to { transform: scale(1); opacity: 1; } }
+        .floating-avatar {
+          width: 48px;
+          height: 48px;
+          border-radius: 50%;
+          border: 2px solid rgba(255,255,255,0.2);
+          object-fit: cover;
+          box-shadow: 0 4px 15px rgba(0,0,0,0.5);
+          position: relative;
         }
+        .floating-name {
+          font-size: 10px;
+          font-weight: 800;
+          color: white;
+          text-shadow: 0 2px 4px rgba(0,0,0,0.8);
+          background: rgba(0,0,0,0.5);
+          padding: 2px 6px;
+          border-radius: 6px;
+        }
+        .avatar-crown-wrapper {
+          position: relative;
+          display: inline-block;
+        }
+        .avatar-crown-wrapper::after {
+          content: '';
+          position: absolute;
+          top: -14px;
+          left: 50%;
+          transform: translateX(-50%);
+          width: 24px;
+          height: 24px;
+          background-size: contain;
+          background-repeat: no-repeat;
+          background-position: center;
+          z-index: 2;
+          pointer-events: none;
+        }
+        .avatar-crown-wrapper.role-owner::after {
+          background-image: url('data:image/svg+xml;utf8,<svg viewBox="0 0 24 24" fill="%23FFD700" xmlns="http://www.w3.org/2000/svg"><path d="M2 20h20v2H2zM2 8l4.5 4L12 3l5.5 9L22 8v10H2V8z"/></svg>');
+          filter: drop-shadow(0 0 5px rgba(255,215,0,0.8));
+        }
+        .avatar-crown-wrapper.role-dev::after, .avatar-crown-wrapper.role-developer::after, .avatar-crown-wrapper.role-co-owner::after {
+          background-image: url('data:image/svg+xml;utf8,<svg viewBox="0 0 24 24" fill="%23C0C0C0" xmlns="http://www.w3.org/2000/svg"><path d="M2 20h20v2H2zM2 8l4.5 4L12 3l5.5 9L22 8v10H2V8z"/></svg>');
+          filter: drop-shadow(0 0 5px rgba(192,192,192,0.8));
+        }
+
+        /* --- Chat Container --- */
         #chat-container {
           position: fixed;
           bottom: 30px;
-          right: 90px;
+          right: 30px;
           width: 330px;
           height: 520px;
-          background: rgba(18, 18, 22, 0.35);
-          backdrop-filter: blur(25px) saturate(160%);
-          -webkit-backdrop-filter: blur(25px) saturate(160%);
-          border-radius: 20px;
+          background: transparent;
           display: none;
           flex-direction: column;
-          box-shadow: 0 20px 50px rgba(0,0,0,0.5);
-          pointer-events: auto;
-          border: 1px solid rgba(255, 255, 255, 0.1);
-          overflow: hidden;
+          pointer-events: none; /* Let clicks pass through body */
+          z-index: 9999;
           transition: transform 0.4s cubic-bezier(0.19, 1, 0.22, 1), opacity 0.4s;
           transform: translateY(10px) scale(0.95);
           opacity: 0;
@@ -219,35 +254,25 @@ class GhostChat {
           transform: translateY(0) scale(1);
           opacity: 1;
         }
-        #chat-container.dragging {
-          user-select: none;
-        }
-        .header-top {
+        #chat-drag-handle {
+          height: 20px;
+          cursor: grab;
           display: flex;
-          justify-content: space-between;
+          justify-content: center;
           align-items: center;
-          width: 100%;
+          pointer-events: auto;
+          margin-bottom: 10px;
         }
-        #online-users-container {
-          padding: 8px 14px;
-          background: rgba(255, 255, 255, 0.02);
-          border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+        #chat-drag-handle::after {
+          content: '';
+          width: 40px;
+          height: 4px;
+          background: rgba(255,255,255,0.3);
+          border-radius: 2px;
         }
-        #online-users {
-          display: flex;
-          flex-wrap: wrap;
-          align-items: center;
-          gap: 6px;
+        #chat-drag-handle:active {
+          cursor: grabbing;
         }
-        .notification {
-          font-size: 11px;
-          color: rgba(255, 255, 255, 0.4);
-          text-align: center;
-          margin: 8px 0;
-          font-weight: 700;
-          text-transform: uppercase;
-          letter-spacing: 1px;
-          border-top: 1px solid rgba(255, 255, 255, 0.05);
           padding-top: 8px;
         }
         .online-label {
@@ -287,6 +312,9 @@ class GhostChat {
           gap: 6px;
           scrollbar-width: none;
           scroll-behavior: smooth;
+          mask-image: linear-gradient(to bottom, transparent 0%, black 15%, black 100%);
+          -webkit-mask-image: linear-gradient(to bottom, transparent 0%, black 15%, black 100%);
+          pointer-events: none; /* Let clicks pass through body */
         }
         #chat-body::-webkit-scrollbar {
           display: none;
@@ -297,15 +325,13 @@ class GhostChat {
           display: flex;
           gap: 8px;
           align-items: flex-end;
-          max-width: 95%;
+          max-width: 100%;
+          align-self: flex-start; /* All messages left aligned FB Live style */
+          animation: popInMsg 0.3s cubic-bezier(0.19, 1, 0.22, 1);
+          pointer-events: auto; /* Make messages clickable */
         }
-        .message-row.local {
-          align-self: flex-end;
-          flex-direction: row-reverse;
-        }
-        .message-row.remote {
-          align-self: flex-start;
-        }
+        @keyframes popInMsg { from { transform: translateY(10px); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
+
         .chat-avatar {
           width: 28px;
           height: 28px;
@@ -318,33 +344,27 @@ class GhostChat {
         .chat-avatar.theme-magic, .chat-avatar.theme-rapunzel { border: 2px solid #a26ed4; box-shadow: 0 0 5px #ffcc70; }
         .chat-avatar.theme-bts { border: 2px solid #d1b3ff; box-shadow: 0 0 5px #7b2ff7; }
 
-        /* --- WhatsApp Bubbles --- */
+        /* --- Facebook Live Bubbles --- */
         .bubble {
           max-width: 100%;
-          padding: 12px 16px;
-          font-size: 13.5px;
-          line-height: 1.5;
+          padding: 8px 12px;
+          font-size: 14px;
+          line-height: 1.4;
           position: relative;
-          box-shadow: 0 4px 15px rgba(0,0,0,0.2);
           font-weight: 500;
-        }
-        .bubble.local {
-          background: linear-gradient(135deg, #054640, #075e54);
-          color: #fff;
-          border-radius: 18px 18px 4px 18px;
-        }
-        .bubble.remote {
-          background: #202c33;
-          color: #fff;
-          border-radius: 18px 18px 18px 4px;
+          color: white;
+          text-shadow: 0 1px 3px rgba(0,0,0,0.8);
+          background: rgba(0,0,0,0.3);
+          border-radius: 12px;
+          border: 1px solid rgba(255,255,255,0.05);
+          backdrop-filter: blur(5px);
         }
         .remote-name {
-          font-size: 10px;
-          font-weight: 800;
-          color: #00a884;
-          margin-bottom: 4px;
-          text-transform: uppercase;
-          letter-spacing: 0.5px;
+          font-size: 11px;
+          font-weight: 900;
+          color: rgba(255,255,255,0.7);
+          margin-bottom: 2px;
+          text-shadow: 0 1px 2px rgba(0,0,0,0.9);
         }
 
         /* --- Rapunzel Premium Profile Easter Egg --- */
@@ -439,6 +459,46 @@ class GhostChat {
         #chat-input:focus {
           background: rgba(255, 255, 255, 0.1);
           border-color: rgba(255, 255, 255, 0.25);
+        }
+
+        /* --- Full Emoji Picker --- */
+        #full-emoji-picker {
+          display: none;
+          flex-wrap: wrap;
+          gap: 4px;
+          padding: 12px;
+          background: rgba(15, 15, 20, 0.96);
+          backdrop-filter: blur(20px);
+          -webkit-backdrop-filter: blur(20px);
+          border-top: 1px solid rgba(255,255,255,0.1);
+          border-radius: 16px 16px 0 0;
+          max-height: 200px;
+          overflow-y: auto;
+          pointer-events: auto;
+          animation: slideUp 0.25s cubic-bezier(0.19, 1, 0.22, 1);
+        }
+        #full-emoji-picker.visible {
+          display: flex;
+        }
+        #full-emoji-picker::-webkit-scrollbar {
+          width: 4px;
+        }
+        #full-emoji-picker::-webkit-scrollbar-track { background: transparent; }
+        #full-emoji-picker::-webkit-scrollbar-thumb {
+          background: rgba(255,255,255,0.2);
+          border-radius: 2px;
+        }
+        .emoji-grid-item {
+          cursor: pointer;
+          font-size: 20px;
+          padding: 4px;
+          border-radius: 6px;
+          transition: transform 0.15s, background 0.15s;
+          line-height: 1;
+        }
+        .emoji-grid-item:hover {
+          transform: scale(1.3);
+          background: rgba(255,255,255,0.1);
         }
 
         /* Notifications */
@@ -668,43 +728,27 @@ class GhostChat {
         </div>
       </div>
 
+      <!-- Floating Users at Top Right -->
+      <div id="floating-users-container"></div>
+
       <div id="chat-container">
-        <div id="chat-header">
-          <div class="header-top">
-            <span class="header-btn" id="minimize-btn">MINIMIZE</span>
-            <span style="font-size: 11px; color: rgba(255,255,255,0.9); font-weight: 900; letter-spacing: 1.5px; text-transform: uppercase;">VisionSync <span style="color:#e52e71">Elite</span></span>
-            <span class="header-btn" id="share-link-btn">SHARE</span>
-          </div>
-        </div>
-        <div id="online-users-container">
-          <div id="online-users" title="Online Users">🟢 Only You</div>
-        </div>
+        <div id="chat-drag-handle"></div>
         <div id="chat-body"></div>
-        <div id="reaction-bar">
-          <span class="reaction-item" data-emoji="❤️">❤️</span>
-          <span class="reaction-item" data-emoji="😂">😂</span>
-          <span class="reaction-item" data-emoji="🔥">🔥</span>
-          <span class="reaction-item" data-emoji="👀">👀</span>
-          <span class="reaction-item" data-emoji="🍿">🍿</span>
-          <span class="reaction-item" data-emoji="💯">💯</span>
-          <span class="reaction-item" data-emoji="✨">✨</span>
-          <span class="reaction-item" data-emoji="😮">😮</span>
-          <span class="reaction-item" data-emoji="😍">😍</span>
-          <span class="reaction-item" data-emoji="👏">👏</span>
-        </div>
+        
+        <div id="full-emoji-picker"></div>
         <div id="reply-preview-bar">
           <div style="flex-grow:1">
-            <div id="reply-to-name" style="color:#e52e71; font-size:10px; font-weight:900; text-transform:uppercase">Replying to Jennie</div>
+            <div id="reply-to-name" style="color:#e52e71; font-size:10px; font-weight:900; text-transform:uppercase">Replying</div>
             <div id="reply-to-msg" style="color:rgba(255,255,255,0.6); font-size:12px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis">Message preview...</div>
           </div>
           <span id="cancel-reply-btn" style="cursor:pointer; padding:5px; font-size:12px">✕</span>
         </div>
-        <div id="chat-input-container">
-          <input type="text" id="chat-input" placeholder="Type a message..." autocomplete="off">
+        
+        <div id="chat-input-wrapper">
+          <div id="emoji-toggle-btn" title="Emojis">😀</div>
+          <input type="text" id="chat-input" placeholder="Say something..." autocomplete="off">
         </div>
       </div>
-
-
     `;
 
     this.chatBody = this.shadowRoot.getElementById('chat-body');
@@ -732,31 +776,29 @@ class GhostChat {
     let isDragging = false;
     let initialX, initialY, xOffset = 0, yOffset = 0;
 
-    const dragStart = (e) => {
-      // Prevent drag when clicking buttons or input
-      const interactive = e.target.closest('input, .header-btn, .reaction-item, #chat-body');
-      if (interactive) return;
+    const dragHandle = this.shadowRoot.getElementById('chat-drag-handle');
+    if (!dragHandle) return;
 
-      e.preventDefault(); // Stop text selection
+    const dragStart = (e) => {
+      e.preventDefault();
       initialX = e.clientX - xOffset;
       initialY = e.clientY - yOffset;
       isDragging = true;
-      container.classList.add('dragging');
+      container.style.cursor = 'grabbing';
     };
     const dragEnd = () => {
       isDragging = false;
-      container.classList.remove('dragging');
+      container.style.cursor = '';
     };
     const drag = (e) => {
-      if (isDragging) {
-        e.preventDefault();
-        xOffset = e.clientX - initialX;
-        yOffset = e.clientY - initialY;
-        container.style.transform = `translate3d(${xOffset}px, ${yOffset}px, 0)`;
-      }
+      if (!isDragging) return;
+      e.preventDefault();
+      xOffset = e.clientX - initialX;
+      yOffset = e.clientY - initialY;
+      container.style.transform = `translate3d(${xOffset}px, ${yOffset}px, 0)`;
     };
 
-    this.shadowRoot.getElementById('chat-header').addEventListener('mousedown', dragStart);
+    dragHandle.addEventListener('mousedown', dragStart);
     document.addEventListener('mouseup', dragEnd);
     document.addEventListener('mousemove', drag);
   }
@@ -764,11 +806,45 @@ class GhostChat {
   setupListeners() {
     const input = this.shadowRoot.getElementById('chat-input');
     const toggleChatBtn = this.shadowRoot.getElementById('toggle-chat-btn');
-    const micBtn = this.shadowRoot.getElementById('toggle-mic-btn');
     const copyBtn = this.shadowRoot.getElementById('copy-room-btn');
     const exitBtn = this.shadowRoot.getElementById('exit-room-btn');
-    const minBtn = this.shadowRoot.getElementById('minimize-btn');
-    const shareBtn = this.shadowRoot.getElementById('share-link-btn');
+    const emojiToggleBtn = this.shadowRoot.getElementById('emoji-toggle-btn');
+    const fullEmojiPicker = this.shadowRoot.getElementById('full-emoji-picker');
+
+    // --- Build Full Emoji Picker ---
+    const EMOJIS = [
+      // Smileys
+      '😀','😁','😂','🤣','😃','😄','😅','😆','😊','😉','😋','😎','😍','🥰','😘','😗','🤩','😏','😒','😞','😔','😟','😕','🙁','😣','😖','😫','😩','🥺','😢','😭','😤','😠','😡','🤬','🤯','😳','😱','😨','😰','😥','🤗','🫡','🤔','🫠','🤭','🤫','🤥','😶','😐','😑','😬','🙄','😯','😦','😧','😮','🥱','😴','🤤','😪','🫨','🤢','🤮','🤧','🥵','🥶','🥴','😵','🤠',
+      // Hands & Gestures
+      '👍','👎','👌','🤌','🤏','✌️','🤞','🫰','🤟','🤘','🤙','👈','👉','👆','🖕','👇','☝️','🫵','👋','🤚','🖐️','✋','🖖','🫱','🤝','🙏','👏','🫶','💪','🦾','🙌',
+      // Hearts
+      '❤️','🧡','💛','💚','💙','💜','🖤','🤍','🤎','💔','❣️','💕','💞','💓','💗','💖','💘','💝','💟','♥️','♾️',
+      // Objects & Fun
+      '🔥','⭐','✨','💫','🌟','🎉','🎊','🎈','🎁','🎶','🎵','🎤','📱','💻','🖥️','🎮','🍕','🍔','🍟','🌮','🍣','🍜','🍩','🍪','🍰','🎂','☕','🧋','🥤','🍺','🥂','🫧','🎬','🎥','📽️','🍿','🏆','⚽','🏀','🎯','🎲','🚀','🌈','⚡','🌙','☀️','🌊','🌸','🌺','🌻','🌹',
+      // Symbols
+      '💯','🔞','🆘','✅','❌','❓','❕','‼️','💬','💭','🔔','🔕','🆕','🆒','🎭','🎪','🙀',
+    ];
+
+    EMOJIS.forEach(em => {
+      const btn = document.createElement('span');
+      btn.classList.add('emoji-grid-item');
+      btn.textContent = em;
+      btn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        input.value += em;
+        input.focus();
+        // Don't close picker so user can pick multiple
+      });
+      fullEmojiPicker.appendChild(btn);
+    });
+
+    // Toggle picker visibility
+    emojiToggleBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      fullEmojiPicker.classList.toggle('visible');
+    });
+    // Close picker when clicking outside
+    document.addEventListener('click', () => fullEmojiPicker.classList.remove('visible'));
 
     input.addEventListener('keypress', (e) => {
       e.stopPropagation();
@@ -830,23 +906,11 @@ class GhostChat {
       }
     });
 
-    minBtn.addEventListener('click', () => {
-      this.chatContainer.classList.remove('visible');
-      toggleChatBtn.classList.remove('active');
-      toggleChatBtn.classList.add('muted');
-      const chatSvg = this.shadowRoot.getElementById('chat-svg');
-      chatSvg.innerHTML = `
-        <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path>
-        <line x1="3" y1="3" x2="21" y2="21" stroke="rgba(255,255,255,0.4)" stroke-width="2.5"></line>
-      `;
-    });
-
     const copyFunc = () => {
       const url = this.roomId || window.location.href;
       navigator.clipboard.writeText(url).then(() => this.showNotification('URL Copied!'));
     };
     copyBtn.addEventListener('click', copyFunc);
-    shareBtn.addEventListener('click', copyFunc);
 
     exitBtn.addEventListener('click', () => {
       if (confirm('Leave this watch party and cleanup room state?')) this.cleanup();
@@ -951,13 +1015,20 @@ class GhostChat {
     const photo = isLocal ? this.currentUserPhoto : senderPhoto;
 
     // Avatar Element
+    const avatarWrapper = document.createElement('div');
+    avatarWrapper.classList.add('avatar-crown-wrapper');
+    if (role) avatarWrapper.classList.add(`role-${role}`); // injects .role-owner, .role-developer, etc.
+
     const avatarEl = document.createElement('img');
     avatarEl.classList.add('chat-avatar');
     avatarEl.src = photo || 'https://www.gravatar.com/avatar/00000000000000000000000000000000?d=mp&f=y'; // fallback
+    
     if (theme === 'owner-dev' || theme === 'dev') avatarEl.classList.add('theme-owner-dev');
     else if (theme === 'magic' || theme === 'rapunzel') avatarEl.classList.add('theme-magic');
     else if (theme === 'bts') avatarEl.classList.add('theme-bts');
-    row.appendChild(avatarEl);
+    
+    avatarWrapper.appendChild(avatarEl);
+    row.appendChild(avatarWrapper);
 
     // Bubble Element
     const bubble = document.createElement('div');
@@ -973,44 +1044,20 @@ class GhostChat {
     else if (isMagic) bubble.classList.add('magic');
     else if (isBTS) bubble.classList.add('bts');
 
-    if (!isLocal || isMagic || isBTS || isOwnerDev || role) {
-      const nameEl = document.createElement('div');
-      nameEl.classList.add('remote-name');
-      
-      if (isOwnerDev) nameEl.classList.add('owner-dev');
-      else if (isMagic) nameEl.classList.add('magic');
-      else if (isBTS) nameEl.classList.add('bts');
+    // Always show name in FB Live style (unless it's a direct continuation which we can add later, for now always show)
+    const nameEl = document.createElement('div');
+    nameEl.classList.add('remote-name');
+    
+    if (isOwnerDev) nameEl.classList.add('owner-dev');
+    else if (isMagic) nameEl.classList.add('magic');
+    else if (isBTS) nameEl.classList.add('bts');
 
-      if (isLocal) {
-        nameEl.style.textAlign = 'right';
-        if (isOwnerDev) nameEl.style.color = '#ff6b6b';
-        else if (isBTS) nameEl.style.color = '#d1b3ff';
-        else if (isMagic) nameEl.style.color = '#ffe4b5';
-      }
+    // Role Logic for Titles
+    let title = trueName;
+    if (role === 'owner' && (theme === 'dev' || theme === 'owner-dev')) title = 'Developer & Co Owner';
 
-      // Role Logic for Titles/Crowns
-      let crown = '';
-      let title = trueName;
-
-      if (role === 'owner') crown = '👑';
-      else if (role === 'developer' || role === 'co-owner') crown = '🛠️';
-      else if (role === 'vip') crown = '🌟';
-
-      if (role === 'owner' && (theme === 'dev' || theme === 'owner-dev')) title = 'Developer & Co Owner';
-
-      // Assemble Name
-      if (isOwnerDev && role === 'owner') {
-        nameEl.textContent = `👑 ${title} 👑`;
-      } else if (isMagic) {
-        nameEl.textContent = `${crown || '👑'} ${trueName} 🐰`;
-      } else if (isBTS) {
-        nameEl.textContent = `🐻 ${trueName} 💜`;
-      } else {
-        nameEl.textContent = `${crown ? crown + ' ' : ''}${title}`;
-      }
-      
-      bubble.appendChild(nameEl);
-    }
+    nameEl.textContent = title;
+    bubble.appendChild(nameEl);
 
     // 2. REPLY RENDERING
     if (replyTo) {
@@ -1297,45 +1344,53 @@ class GhostChat {
     this.chatBody.scrollTop = this.chatBody.scrollHeight;
   }
 
-  updateOnlineUsers(userNames) {
-    const el = this.shadowRoot.getElementById('online-users');
-    if (!el) return;
+  updateOnlineUsers(usersArray) {
+    const container = this.shadowRoot.getElementById('floating-users-container');
+    if (!container) return;
 
-    const colors = [
-      { bg: 'rgba(0, 168, 132, 0.15)', text: '#00d4a4' },
-      { bg: 'rgba(229, 46, 113, 0.15)', text: '#ff5c93' },
-      { bg: 'rgba(66, 133, 244, 0.15)', text: '#6da8ff' },
-      { bg: 'rgba(255, 138, 0, 0.15)', text: '#ffac40' },
-      { bg: 'rgba(156, 39, 176, 0.15)', text: '#ce93d8' },
-      { bg: 'rgba(255, 235, 59, 0.15)', text: '#ffe082' },
-      { bg: 'rgba(0, 188, 212, 0.15)', text: '#4dd0e1' },
-      { bg: 'rgba(244, 67, 54, 0.15)', text: '#ef9a9a' },
-    ];
+    container.innerHTML = '';
 
-    el.innerHTML = '';
+    // Add local user to the list for display
+    const localUser = {
+      userName: this.lastUserName || 'You',
+      userTheme: this.currentUserTheme,
+      userRole: this.currentUserRole,
+      userPhoto: this.currentUserPhoto
+    };
+    
+    // Sort so local user is always first (or last depending on flex-direction)
+    const allUsers = [localUser, ...usersArray];
 
-    const label = document.createElement('span');
-    label.classList.add('online-label');
-    label.textContent = `🟢 ${userNames.length > 0 ? userNames.length : 0}`;
-    el.appendChild(label);
+    allUsers.forEach(u => {
+      if (!u.userName) return;
+      
+      const wrapper = document.createElement('div');
+      wrapper.classList.add('floating-user');
 
-    userNames.forEach((name, i) => {
-      const tag = document.createElement('span');
-      tag.classList.add('user-tag');
+      const avatarWrap = document.createElement('div');
+      avatarWrap.classList.add('avatar-crown-wrapper');
+      if (u.userRole) avatarWrap.classList.add(`role-${u.userRole}`);
 
-      if (name.match(/abeera|jennie/i)) {
-        tag.style.background = 'linear-gradient(90deg, #a26ed4, #ffcc70)';
-        tag.style.color = '#fff';
-        tag.style.boxShadow = '0 0 10px rgba(162,110,212,0.6)';
-        tag.textContent = `👑 ${name} 🐰`;
-      } else {
-        const color = colors[i % colors.length];
-        tag.style.background = color.bg;
-        tag.style.color = color.text;
-        tag.textContent = name;
-      }
+      const img = document.createElement('img');
+      img.classList.add('floating-avatar');
+      img.src = u.userPhoto || 'https://www.gravatar.com/avatar/00000000000000000000000000000000?d=mp&f=y';
+      
+      if (u.userTheme === 'owner-dev' || u.userTheme === 'dev') img.classList.add('theme-owner-dev');
+      else if (u.userTheme === 'magic' || u.userTheme === 'rapunzel') img.classList.add('theme-magic');
+      else if (u.userTheme === 'bts') img.classList.add('theme-bts');
+      
+      avatarWrap.appendChild(img);
+      
+      const nameTag = document.createElement('div');
+      nameTag.classList.add('floating-name');
+      
+      let title = u.userName;
+      if (u.userRole === 'owner' && (u.userTheme === 'dev' || u.userTheme === 'owner-dev')) title = 'Developer & Co Owner';
+      nameTag.textContent = title;
 
-      el.appendChild(tag);
+      wrapper.appendChild(avatarWrap);
+      wrapper.appendChild(nameTag);
+      container.appendChild(wrapper);
     });
   }
 }

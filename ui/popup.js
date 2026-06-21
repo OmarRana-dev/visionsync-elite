@@ -339,19 +339,31 @@ document.addEventListener('DOMContentLoaded', () => {
 
     const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
     if (tab) {
-      chrome.tabs.sendMessage(tab.id, {
-        type: 'JOIN_ROOM', roomId, userName, isCreate, movieUrl: tab.url
-      }, (response) => {
-        if (chrome.runtime.lastError || !response) {
-          statusMsg.textContent = 'Error: Launch the extension first.';
-          return;
-        }
-        if (response.error) {
-          statusMsg.textContent = response.error;
-        } else {
-          showConnectedView(roomId);
-          chrome.storage.local.set({ userName });
-        }
+      // 1. Fetch user to ensure we have their token/GoogleID
+      chrome.storage.local.get(['vsUser'], (res) => {
+        const user = res.vsUser || {};
+        chrome.tabs.sendMessage(tab.id, {
+          type: 'JOIN_ROOM', 
+          roomId, 
+          userName, 
+          isCreate, 
+          movieUrl: tab.url,
+          userEmail: user.email,
+          userTheme: user.theme,
+          userRole: user.role,
+          userPhoto: user.photo
+        }, (response) => {
+          if (chrome.runtime.lastError || !response) {
+            statusMsg.textContent = 'Error: Launch the extension first.';
+            return;
+          }
+          if (response.error) {
+            statusMsg.textContent = response.error;
+          } else {
+            showConnectedView(roomId);
+            chrome.storage.local.set({ userName });
+          }
+        });
       });
     }
   }

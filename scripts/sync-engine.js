@@ -6,7 +6,7 @@ class SyncEngine {
     this.currentRoomId = null;
     this.currentUserName = null;
     this.isRemoteSyncing = false;
-    this.peerNames = {};
+    this.peerData = {};
     this.hasJoinedOnce = false;
     this.pausedByRemoteBuffer = false; // Track if we were paused by a buffer lock
     this.sessionId = null;
@@ -29,7 +29,8 @@ class SyncEngine {
 
     chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       if (message.type === 'JOIN_ROOM') {
-        this.joinRoom(message.roomId, message.userName, message.isCreate, message.movieUrl, sendResponse);
+        const { roomId, userName, isCreate, movieUrl, userEmail, userTheme, userRole, userPhoto } = message;
+        this.joinRoom(roomId, userName, isCreate, movieUrl, userEmail, userTheme, userRole, userPhoto, sendResponse);
         return true;
       } else if (message.type === 'GET_STATUS') {
         sendResponse({
@@ -135,7 +136,7 @@ class SyncEngine {
 
     this.socket.on('existing-users', (users) => {
       console.log('[VisionSync] Existing users received:', users);
-      Object.assign(this.peerNames, users);
+      Object.assign(this.peerData, users);
       this.updateChatUserList();
     });
 
@@ -198,14 +199,14 @@ class SyncEngine {
         if (!this.videoElement.paused) this.videoElement.pause();
         if (data.type === 'waiting') {
           this.pausedByRemoteBuffer = true;
-          this.callChat('showNotification', `Waiting for ${this.peerNames[data.socketId] || 'someone'}... ⏳`);
+          this.callChat('showNotification', `Waiting for ${this.peerData[data.socketId]?.userName || 'someone'}... ⏳`);
         }
         if (data.type === 'pause') {
           if (Math.abs(this.videoElement.currentTime - data.time) > 0.5) {
             this.videoElement.currentTime = data.time;
           }
           this.pausedByRemoteBuffer = false;
-          this.callChat('showNotification', `Paused by ${this.peerNames[data.socketId] || 'someone'}`);
+          this.callChat('showNotification', `Paused by ${this.peerData[data.socketId]?.userName || 'someone'}`);
         }
       } else if (data.type === 'play' || data.type === 'playing') {
         const wasWaiting = this.pausedByRemoteBuffer;
@@ -234,12 +235,12 @@ class SyncEngine {
         if (wasWaiting) {
           this.callChat('showNotification', 'Resuming... ▶️');
         } else if (data.type === 'play') {
-          this.callChat('showNotification', `Playing by ${this.peerNames[data.socketId] || 'someone'}`);
+          this.callChat('showNotification', `Playing by ${this.peerData[data.socketId]?.userName || 'someone'}`);
         }
       } else if (data.type === 'seek' || timeDiff > this.syncThreshold) {
         this.videoElement.currentTime = targetTime;
         if (data.type === 'seek') {
-          this.callChat('showNotification', `Seeking by ${this.peerNames[data.socketId] || 'someone'}`);
+          this.callChat('showNotification', `Seeking by ${this.peerData[data.socketId]?.userName || 'someone'}`);
         }
       }
 
@@ -273,14 +274,14 @@ class SyncEngine {
       this.callChat('triggerEmojiBurst', data.emoji);
     });
 
-    this.socket.on('user-joined', ({ socketId, userName }) => {
-      this.peerNames[socketId] = userName;
-      this.callChat('addSystemMessage', `${userName} joined`);
+    this.socket.on('user-joined', (userData) => {
+      this.peerData[userData.socketId] = userData;
+      this.callChat('addSystemMessage', `${userData.userName} joined`);
       this.updateChatUserList();
     });
 
     this.socket.on('user-left', ({ socketId, userName }) => {
-      delete this.peerNames[socketId];
+      delete this.peerData[socketId];
       this.callChat('addSystemMessage', `${userName} left`);
       this.updateChatUserList();
     });
@@ -309,12 +310,13 @@ class SyncEngine {
     }
   }
 
-  joinRoom(roomId, userName, isCreate, movieUrl, callback) {
+  joinRoom(roomId, userName, isCreate, movieUrl, userEmail, userTheme, userRole, userPhoto, callback) {
     this.currentRoomId = roomId;
     this.currentUserName = userName;
     this.isHost = isCreate;
     
-    this.socket.emit('join-room', roomId, userName, { isCreate, sessionId: this.sessionId, movieUrl }, (response) => {
+    const options = { isCreate, sessionId: this.sessionId, movieUrl, userEmail, userTheme, userRole, userPhoto };
+    this.socket.emit('join-room', roomId, userName, options, (response) => {
       if (response && response.error) {
         // If room doesn't exist, don't show UI
         this.currentRoomId = null;
