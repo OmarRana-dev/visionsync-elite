@@ -1,4 +1,4 @@
-// ghost-chat.js: Shadow DOM UI, Dual-State (Dock & Chat), WhatsApp-Style, Full-Screen Reactions
+// ghost-chat.js: Shadow DOM UI, Right-Aligned Transparent Facebook Live Style
 class GhostChat {
   constructor() {
     this.container = null;
@@ -9,6 +9,23 @@ class GhostChat {
     this.unreadCount = 0;
     this.roomId = '';
     this.lastUserName = 'You';
+    this.localSocketId = 'local';
+
+    this.currentUserEmail = '';
+    this.currentUserTheme = '';
+    this.currentUserRole = '';
+    this.currentUserPhoto = '';
+    this.currentUserGoogleId = '';
+
+    // customizable emoji reactions lists
+    this.msgReactions = ['👍', '❤️', '😂', '😮', '😢']; // 5 customizable reactions for messages
+    this.movieReactions = ['❤️', '😂', '🔥', '👀', '😢', '🍿', '💯', '✨']; // 8 customizable screen-burst emojis
+
+    this.customizingSlotIndex = null; // index of slot being changed
+    this.customizingTargetType = null; // 'msg' or 'movie'
+    this.currentReply = null;
+    this.typingTimeout = null;
+    this.movieCustomizeActive = false;
 
     this.init();
     console.log('[VisionSync Elite] GhostChat UI initialized');
@@ -18,32 +35,37 @@ class GhostChat {
     this.container = document.createElement('div');
     this.container.id = 'visionSync-ghost-container';
 
-    // Inject into the highest layer
+    // Inject into fullscreen element or body
     const attachTarget = document.fullscreenElement || document.body;
     attachTarget.appendChild(this.container);
 
     this.shadowRoot = this.container.attachShadow({ mode: 'open' });
     this.render();
-    this.localSocketId = 'local';
 
-    this.currentUserEmail = '';
-    this.currentUserTheme = '';
-    this.currentUserRole = '';
-    this.currentUserPhoto = '';
-
-    chrome.storage.local.get(['vsUser'], (res) => {
+    chrome.storage.local.get(['vsUser', 'customMsgReactions', 'customMovieReactions'], (res) => {
       if (res.vsUser) {
         this.currentUserEmail = res.vsUser.email || '';
         this.currentUserTheme = res.vsUser.theme || '';
         this.currentUserRole = res.vsUser.role || '';
         this.currentUserPhoto = res.vsUser.photo || '';
+        this.currentUserGoogleId = res.vsUser.googleId || '';
+      }
+      if (res.customMsgReactions) {
+        this.msgReactions = res.customMsgReactions;
+      }
+      if (res.customMovieReactions) {
+        this.movieReactions = res.customMovieReactions;
+        this.renderMovieReactionItems();
+      }
+
+      if (this.currentUserGoogleId) {
+        this.loadPreferences();
       }
     });
 
-    this.setupDrag();
     this.setupListeners();
     this.setupEmojiReactions();
-    
+
     // Listen for cross-frame relay messages
     chrome.runtime.onMessage.addListener((message) => {
       if (message.type === 'RELAY_TO_CHAT') {
@@ -76,39 +98,52 @@ class GhostChat {
           z-index: 2147483647;
           pointer-events: none;
           display: none;
-          font-family: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+          font-family: 'Inter', -apple-system, sans-serif;
         }
         :host(.active) {
           display: block;
         }
 
-        /* --- Floating Dock (State A) --- */
+        /* --- Floating Dock (Left side, vertical, draggable) --- */
         #visionSync-dock {
           position: fixed;
-          right: 20px;
-          top: 50%;
+          right: 0px;
+          top: 70%;
           transform: translateY(-50%);
-          width: 50px;
-          background: rgba(15, 15, 19, 0.35);
+          width: 48px;
+          height: auto;
+          background: rgba(15, 15, 19, 0.4);
           backdrop-filter: blur(20px);
           -webkit-backdrop-filter: blur(20px);
-          border-radius: 25px;
+          border-radius: 24px;
           display: flex;
           flex-direction: column;
           align-items: center;
-          gap: 24px;
-          padding: 24px 0;
-          box-shadow: 0 10px 40px rgba(0,0,0,0.6);
+          gap: 20px;
+          padding: 18px 0;
+          box-shadow: 0 10px 30px rgba(0,0,0,0.5);
           pointer-events: auto;
-          border: 1px solid rgba(255, 255, 255, 0.1);
-          transition: all 0.4s cubic-bezier(0.19, 1, 0.22, 1);
+          border: 1px solid rgba(255, 255, 255, 0.08);
+          cursor: grab;
+          user-select: none;
+        }
+        #visionSync-dock:active {
+          cursor: grabbing;
+        }
+        /* Drag handle strip at top of dock */
+        #dock-drag-handle {
+          width: 24px;
+          height: 4px;
+          background: rgba(255,255,255,0.2);
+          border-radius: 2px;
+          cursor: grab;
         }
         .dock-icon {
-          width: 26px;
-          height: 26px;
+          width: 24px;
+          height: 24px;
           cursor: pointer;
           color: rgba(255, 255, 255, 0.5);
-          transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+          transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1);
           display: flex;
           align-items: center;
           justify-content: center;
@@ -116,7 +151,7 @@ class GhostChat {
         }
         .dock-icon:hover {
           color: #fff;
-          transform: scale(1.15) rotate(2deg);
+          transform: scale(1.15);
         }
         .dock-icon svg {
           width: 100%;
@@ -124,183 +159,52 @@ class GhostChat {
         }
         .dock-icon.active {
           color: #e52e71;
-          filter: drop-shadow(0 0 10px rgba(229, 46, 113, 0.5));
+          filter: drop-shadow(0 0 8px rgba(229, 46, 113, 0.5));
         }
         .dock-icon.muted {
           color: rgba(255, 255, 255, 0.4);
         }
         .dock-icon.exit {
           color: #ff4b2b;
-          margin-top: 10px;
-        }
-        .dock-icon.exit:hover {
-          color: #ff2a6d;
-          transform: scale(1.1) translateX(-2px);
-        }
-        
-        /* --- Active Chat Box (State B) --- */
-        #chat-container {
-          position: fixed;
-          bottom: 30px;
-          right: 90px;
-          width: 330px;
-          height: 500px;
-          background: rgba(18, 18, 22, 0.85);
-          backdrop-filter: blur(20px);
-          border-radius: 20px;
-          display: none;
-          flex-direction: column;
-          box-shadow: 0 20px 50px rgba(0,0,0,0.7);
-          pointer-events: auto;
-          border: 1px solid rgba(255, 255, 255, 0.08);
-          overflow: hidden;
-          transition: all 0.4s cubic-bezier(0.19, 1, 0.22, 1);
-          transform: translateY(10px) scale(0.95);
-          opacity: 0;
-        }
-        #chat-container.visible {
-          display: flex;
-          transform: translateY(0) scale(1);
-          opacity: 1;
-        }
-        :host(.fullscreen) #chat-container {
-          background: transparent !important;
-          backdrop-filter: none !important;
-          border: none !important;
-          box-shadow: none !important;
-        }
-        /* --- Floating Users Top Right --- */
-        #floating-users-container {
-          position: fixed;
-          top: 20px;
-          right: 20px;
-          display: flex;
-          gap: 12px;
-          flex-direction: row-reverse;
-          z-index: 10000;
-          pointer-events: none;
-        }
-        .floating-user {
-          display: flex;
-          flex-direction: column;
-          align-items: center;
-          gap: 4px;
-          animation: popInUser 0.4s cubic-bezier(0.19, 1, 0.22, 1);
-        }
-        @keyframes popInUser { from { transform: scale(0); opacity: 0; } to { transform: scale(1); opacity: 1; } }
-        .floating-avatar {
-          width: 48px;
-          height: 48px;
-          border-radius: 50%;
-          border: 2px solid rgba(255,255,255,0.2);
-          object-fit: cover;
-          box-shadow: 0 4px 15px rgba(0,0,0,0.5);
-          position: relative;
-        }
-        .floating-name {
-          font-size: 10px;
-          font-weight: 800;
-          color: white;
-          text-shadow: 0 2px 4px rgba(0,0,0,0.8);
-          background: rgba(0,0,0,0.5);
-          padding: 2px 6px;
-          border-radius: 6px;
-        }
-        .avatar-crown-wrapper {
-          position: relative;
-          display: inline-block;
-        }
-        .avatar-crown-wrapper::after {
-          content: '';
-          position: absolute;
-          top: -14px;
-          left: 50%;
-          transform: translateX(-50%);
-          width: 24px;
-          height: 24px;
-          background-size: contain;
-          background-repeat: no-repeat;
-          background-position: center;
-          z-index: 2;
-          pointer-events: none;
-        }
-        .avatar-crown-wrapper.role-owner::after {
-          background-image: url('data:image/svg+xml;utf8,<svg viewBox="0 0 24 24" fill="%23FFD700" xmlns="http://www.w3.org/2000/svg"><path d="M2 20h20v2H2zM2 8l4.5 4L12 3l5.5 9L22 8v10H2V8z"/></svg>');
-          filter: drop-shadow(0 0 5px rgba(255,215,0,0.8));
-        }
-        .avatar-crown-wrapper.role-dev::after, .avatar-crown-wrapper.role-developer::after, .avatar-crown-wrapper.role-co-owner::after {
-          background-image: url('data:image/svg+xml;utf8,<svg viewBox="0 0 24 24" fill="%23C0C0C0" xmlns="http://www.w3.org/2000/svg"><path d="M2 20h20v2H2zM2 8l4.5 4L12 3l5.5 9L22 8v10H2V8z"/></svg>');
-          filter: drop-shadow(0 0 5px rgba(192,192,192,0.8));
         }
 
-        /* --- Chat Container --- */
+        /* --- Chat container draggable --- */
         #chat-container {
           position: fixed;
-          bottom: 30px;
-          right: 30px;
-          width: 330px;
+          bottom: 70px;
+          right: 40px;
+          width: 360px;
           height: 520px;
-          background: transparent;
+          background: transparent !important;
+          border: none !important;
+          box-shadow: none !important;
           display: none;
           flex-direction: column;
-          pointer-events: none; /* Let clicks pass through body */
-          z-index: 9999;
-          transition: transform 0.4s cubic-bezier(0.19, 1, 0.22, 1), opacity 0.4s;
-          transform: translateY(10px) scale(0.95);
-          opacity: 0;
+          pointer-events: none;
+          overflow: visible;
         }
         #chat-container.visible {
           display: flex;
-          transform: translateY(0) scale(1);
-          opacity: 1;
         }
+        /* Drag handle bar at top of input box */
         #chat-drag-handle {
-          height: 20px;
-          cursor: grab;
+          height: 18px;
           display: flex;
-          justify-content: center;
           align-items: center;
+          justify-content: center;
+          cursor: grab;
           pointer-events: auto;
-          margin-bottom: 10px;
+          opacity: 0.4;
+          transition: opacity 0.2s;
         }
-        #chat-drag-handle::after {
+        #chat-drag-handle:hover { opacity: 0.8; }
+        #chat-drag-handle:active { cursor: grabbing; }
+        #chat-drag-handle::before {
           content: '';
-          width: 40px;
-          height: 4px;
-          background: rgba(255,255,255,0.3);
-          border-radius: 2px;
-        }
-        #chat-drag-handle:active {
-          cursor: grabbing;
-        }
-          padding-top: 8px;
-        }
-        .online-label {
-          font-size: 9px;
-          color: rgba(255, 255, 255, 0.45);
-          font-weight: 800;
-          text-transform: uppercase;
-          letter-spacing: 0.5px;
-          margin-right: 2px;
-        }
-        .user-tag {
-          font-size: 10px;
-          font-weight: 700;
-          padding: 2px 8px;
-          border-radius: 10px;
-          letter-spacing: 0.3px;
-        }
-        .header-btn {
-          font-size: 10px;
-          font-weight: 900;
-          color: rgba(255, 255, 255, 0.4);
-          cursor: pointer;
-          transition: all 0.2s;
-          letter-spacing: 0.5px;
-        }
-        .header-btn:hover {
-          color: #fff;
-          text-shadow: 0 0 8px #fff;
+          width: 36px;
+          height: 3px;
+          background: rgba(255,255,255,0.7);
+          border-radius: 3px;
         }
 
         #chat-body {
@@ -309,445 +213,472 @@ class GhostChat {
           padding: 16px;
           display: flex;
           flex-direction: column;
-          gap: 6px;
+          gap: 14px;
           scrollbar-width: none;
           scroll-behavior: smooth;
-          mask-image: linear-gradient(to bottom, transparent 0%, black 15%, black 100%);
-          -webkit-mask-image: linear-gradient(to bottom, transparent 0%, black 15%, black 100%);
-          pointer-events: none; /* Let clicks pass through body */
+          pointer-events: auto;
+          /* Fading mask on upper half of panel */
+          mask-image: linear-gradient(to bottom, transparent 0%, rgba(0,0,0,0) 10%, rgba(0,0,0,1) 50%, rgba(0,0,0,1) 100%);
+          -webkit-mask-image: linear-gradient(to bottom, transparent 0%, rgba(0,0,0,0) 10%, rgba(0,0,0,1) 50%, rgba(0,0,0,1) 100%);
         }
         #chat-body::-webkit-scrollbar {
           display: none;
         }
 
-        /* --- Message Rows & Avatars --- */
+        /* --- Facebook Live Message Item Layout --- */
         .message-row {
           display: flex;
-          gap: 8px;
-          align-items: flex-end;
-          max-width: 100%;
-          align-self: flex-start; /* All messages left aligned FB Live style */
-          animation: popInMsg 0.3s cubic-bezier(0.19, 1, 0.22, 1);
-          pointer-events: auto; /* Make messages clickable */
+          gap: 12px;
+          align-items: flex-start;
+          width: 100%;
+          animation: msgFadeIn 0.3s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+          position: relative;
         }
-        @keyframes popInMsg { from { transform: translateY(10px); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
-
+        @keyframes msgFadeIn {
+          from { opacity: 0; transform: translateY(8px); }
+          to { opacity: 1; transform: translateY(0); }
+        }
+        
         .chat-avatar {
-          width: 28px;
-          height: 28px;
+          width: 36px;
+          height: 36px;
           border-radius: 50%;
           object-fit: cover;
           flex-shrink: 0;
-          border: 1px solid rgba(255,255,255,0.1);
+          border: 1.5px solid rgba(255, 255, 255, 0.12);
+          box-shadow: 0 2px 8px rgba(0,0,0,0.3);
         }
-        .chat-avatar.theme-owner-dev, .chat-avatar.theme-dev { border: 2px solid #ff8a00; box-shadow: 0 0 5px #e52e71; }
-        .chat-avatar.theme-magic, .chat-avatar.theme-rapunzel { border: 2px solid #a26ed4; box-shadow: 0 0 5px #ffcc70; }
-        .chat-avatar.theme-bts { border: 2px solid #d1b3ff; box-shadow: 0 0 5px #7b2ff7; }
 
-        /* --- Facebook Live Bubbles --- */
-        .bubble {
-          max-width: 100%;
-          padding: 8px 12px;
-          font-size: 14px;
-          line-height: 1.4;
+        .msg-content-area {
+          flex-grow: 1;
+          display: flex;
+          flex-direction: column;
           position: relative;
-          font-weight: 500;
-          color: white;
-          text-shadow: 0 1px 3px rgba(0,0,0,0.8);
-          background: rgba(0,0,0,0.3);
-          border-radius: 12px;
-          border: 1px solid rgba(255,255,255,0.05);
-          backdrop-filter: blur(5px);
         }
-        .remote-name {
-          font-size: 11px;
-          font-weight: 900;
-          color: rgba(255,255,255,0.7);
+
+        /* Header Row: Username + Time */
+        .msg-header-row {
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
           margin-bottom: 2px;
-          text-shadow: 0 1px 2px rgba(0,0,0,0.9);
+        }
+        .msg-username {
+          font-size: 13.5px;
+          font-weight: 700;
+          color: #ffffff;
+        }
+        .msg-time {
+          font-size: 11px;
+          color: rgba(255, 255, 255, 0.4);
+          font-weight: 500;
         }
 
-        /* --- Rapunzel Premium Profile Easter Egg --- */
-        .bubble.magic {
-          background: linear-gradient(135deg, rgba(162,110,212,0.9), rgba(255,204,112,0.9)) !important;
-          box-shadow: 0 4px 15px rgba(162,110,212,0.5) !important;
-          color: #fff !important;
-          border: 1px solid rgba(255,255,255,0.5) !important;
-          text-shadow: 0 1px 3px rgba(0,0,0,0.2) !important;
-          position: relative;
+        /* Text - plain, borderless, subtle shadows */
+        .msg-text-line {
+          font-size: 13.5px;
+          color: #ffffff;
+          line-height: 1.45;
+          font-weight: 500;
+          text-shadow: 0 1px 2px rgba(0, 0, 0, 0.9), 0 2px 4px rgba(0, 0, 0, 0.5);
+          word-break: break-word;
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          gap: 12px;
         }
-        .bubble.magic::after {
-          content: '🐰';
+
+        /* Always visible custom action buttons */
+        .msg-action-buttons {
+          display: flex;
+          gap: 6px;
+          align-items: center;
+          margin-left: auto;
+          padding-left: 8px;
+          flex-shrink: 0;
+        }
+        
+        .msg-action-btn {
+          cursor: pointer;
+          color: rgba(255, 255, 255, 0.55);
+          transition: all 0.2s ease;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          background: rgba(255, 255, 255, 0.05);
+          border: 1px solid rgba(255, 255, 255, 0.08);
+          border-radius: 50%;
+          width: 24px;
+          height: 24px;
+        }
+        .msg-action-btn:hover {
+          color: #ff8a00;
+          background: rgba(255, 255, 255, 0.12);
+          transform: scale(1.1);
+        }
+        .msg-action-btn svg {
+          width: 13px;
+          height: 13px;
+        }
+
+        /* Message Reactions badges row */
+        .msg-reactions-row {
+          display: flex;
+          align-items: center;
+          gap: 6px;
+          margin-top: 4px;
+          flex-wrap: wrap;
+        }
+        .msg-reaction-badge {
+          background: rgba(0, 0, 0, 0.45);
+          border: 1px solid rgba(255, 255, 255, 0.1);
+          border-radius: 12px;
+          padding: 1px 6px;
+          font-size: 10px;
+          display: flex;
+          align-items: center;
+          gap: 3px;
+          cursor: pointer;
+          box-shadow: 0 2px 6px rgba(0,0,0,0.3);
+          color: rgba(255, 255, 255, 0.8);
+          user-select: none;
+        }
+        .msg-reaction-badge.mine {
+          border-color: #e52e71;
+          background: rgba(229, 46, 113, 0.25);
+        }
+
+        /* Mini Quick-Reactions Overlay Panel (5 items) */
+        .msg-reactions-picker-overlay {
           position: absolute;
-          bottom: -8px;
-          right: -8px;
-          font-size: 14px;
-          filter: drop-shadow(0 2px 4px rgba(0,0,0,0.3));
+          bottom: 24px;
+          left: 0;
+          background: rgba(18, 18, 22, 0.95);
+          backdrop-filter: blur(15px);
+          border: 1px solid rgba(255, 255, 255, 0.15);
+          border-radius: 16px;
+          padding: 6px 10px;
+          display: none;
+          gap: 10px;
+          box-shadow: 0 10px 25px rgba(0,0,0,0.5);
+          z-index: 1000;
         }
-        .remote-name.magic {
-          color: #ffe4b5 !important;
+        .msg-reactions-picker-overlay.visible {
+          display: flex;
+        }
+        .msg-picker-emoji {
+          font-size: 18px;
+          cursor: pointer;
+          transition: transform 0.15s;
+          user-select: none;
+        }
+        .msg-picker-emoji:hover {
+          transform: scale(1.3);
+        }
+        .msg-picker-emoji.customizing {
+          border: 1px dashed #ff8a00;
+          border-radius: 4px;
+          background: rgba(255, 138, 0, 0.1);
+          animation: wobble 0.5s infinite alternate;
+        }
+
+        /* --- Minimalist Replies --- */
+        .reply-box {
+          border-left: 2px solid rgba(255, 255, 255, 0.35);
+          padding-left: 8px;
+          margin-bottom: 4px;
+          font-size: 11px;
+          color: rgba(255, 255, 255, 0.5);
+        }
+        .reply-name {
           font-weight: 800;
+          color: rgba(255, 255, 255, 0.7);
+          margin-bottom: 1px;
+          font-size: 9.5px;
+          text-transform: uppercase;
         }
-        .bubble.magic.local::after {
-          right: auto;
-          left: -8px;
-        }
-
-        /* --- Developer & Co Owner Theme --- */
-        .bubble.owner-dev {
-          background: linear-gradient(135deg, rgba(229, 46, 113, 0.9), rgba(255, 138, 0, 0.9)) !important;
-          box-shadow: 0 4px 15px rgba(229, 46, 113, 0.5) !important;
-          color: #fff !important;
-          border: 1px solid rgba(255,255,255,0.5) !important;
-          text-shadow: 0 1px 3px rgba(0,0,0,0.2) !important;
-          position: relative;
-        }
-        .bubble.owner-dev::after {
-          content: '👑';
-          position: absolute;
-          bottom: -8px;
-          right: -8px;
-          font-size: 14px;
-          filter: drop-shadow(0 2px 4px rgba(0,0,0,0.3));
-        }
-        .remote-name.owner-dev {
-          color: #fff4e6 !important;
-          font-weight: 900;
-          letter-spacing: 1px;
-        }
-        .bubble.owner-dev.local::after {
-          right: auto;
-          left: -8px;
+        .reply-msg {
+          white-space: nowrap;
+          overflow: hidden;
+          text-overflow: ellipsis;
+          max-width: 240px;
         }
 
-        /* --- Reaction Bar --- */
+        /* --- Bottom Container (Reactions, Typing, Input) --- */
+        #users-and-input-container {
+          background: transparent !important;
+          border: none !important;
+          padding: 10px;
+          display: flex;
+          flex-direction: column;
+          gap: 8px;
+          margin-top: 8px;
+          pointer-events: auto;
+        }
+        
+        #typing-indicator {
+          font-size: 11px;
+          color: rgba(255, 255, 255, 0.7);
+          padding: 2px 8px;
+          display: flex;
+          align-items: center;
+          gap: 6px;
+          font-weight: 600;
+        }
+        .typing-dots {
+          display: flex;
+          gap: 3px;
+          align-items: center;
+        }
+        .typing-dots span {
+          width: 4px; height: 4px;
+          background: #fff;
+          border-radius: 50%;
+          animation: typingDot 1.4s infinite both;
+        }
+        .typing-dots span:nth-child(2) { animation-delay: .2s; }
+        .typing-dots span:nth-child(3) { animation-delay: .4s; }
+        @keyframes typingDot {
+          0%, 80%, 100% { transform: scale(0.6); opacity: 0.4; }
+          40% { transform: scale(1.2); opacity: 1; }
+        }
+
+        /* --- Movie reactions screen burst bar (8 slots) --- */
         #reaction-bar {
           display: flex;
           justify-content: space-around;
-          padding: 10px 14px;
-          background: rgba(0, 0, 0, 0.3);
+          align-items: center;
+          padding: 4px 6px;
           border-top: 1px solid rgba(255, 255, 255, 0.05);
         }
         .reaction-item {
-          font-size: 22px;
+          font-size: 20px;
           cursor: pointer;
-          transition: all 0.2s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+          transition: transform 0.2s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+          user-select: none;
         }
         .reaction-item:hover {
-          transform: scale(1.4) translateY(-4px);
+          transform: scale(1.3) translateY(-2px);
+        }
+        .reaction-item.customizing {
+          border: 1px dashed #ff8a00;
+          border-radius: 4px;
+          background: rgba(255, 138, 0, 0.1);
+          animation: wobble 0.5s infinite alternate;
+        }
+        @keyframes wobble {
+          from { transform: rotate(-4deg) scale(1.1); }
+          to { transform: rotate(4deg) scale(1.1); }
         }
 
         /* --- Input Area --- */
-        #chat-input-container {
-          padding: 14px 18px;
-          background: rgba(10, 10, 12, 0.6);
+        #input-row {
           display: flex;
-          gap: 12px;
+          gap: 8px;
           align-items: center;
         }
         #chat-input {
           flex-grow: 1;
-          background: rgba(255, 255, 255, 0.06);
-          border: 1px solid rgba(255, 255, 255, 0.12);
-          border-radius: 24px;
-          padding: 10px 20px;
+          background: rgba(255, 255, 255, 0.08);
+          border: 1px solid rgba(255, 255, 255, 0.1);
+          border-radius: 18px;
+          padding: 8px 16px;
           color: #fff;
-          font-size: 14px;
+          font-size: 13.5px;
           outline: none;
           transition: all 0.3s;
         }
         #chat-input:focus {
-          background: rgba(255, 255, 255, 0.1);
-          border-color: rgba(255, 255, 255, 0.25);
+          background: rgba(255, 255, 255, 0.12);
+          border-color: rgba(255, 255, 255, 0.2);
+        }
+        
+        .send-btn {
+          background: linear-gradient(90deg, #ff8a00, #e52e71);
+          border: none;
+          color: #fff;
+          font-weight: 700;
+          font-size: 12px;
+          padding: 8px 16px;
+          border-radius: 16px;
+          cursor: pointer;
+          transition: transform 0.2s, filter 0.2s;
+        }
+        .send-btn:hover {
+          transform: scale(1.05);
+          filter: brightness(1.1);
         }
 
-        /* --- Full Emoji Picker --- */
-        #full-emoji-picker {
-          display: none;
-          flex-wrap: wrap;
-          gap: 4px;
-          padding: 12px;
-          background: rgba(15, 15, 20, 0.96);
+        .input-btn {
+          width: 32px; height: 32px;
+          border-radius: 50%;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          cursor: pointer;
+          background: rgba(255, 255, 255, 0.06);
+          color: #fff;
+          font-weight: bold;
+          font-size: 14px;
+          transition: all 0.2s;
+          user-select: none;
+        }
+        .input-btn:hover {
+          background: rgba(255, 255, 255, 0.12);
+        }
+
+        /* --- Full Emoji Picker Container --- */
+        #emoji-picker-container {
+          position: absolute;
+          bottom: 110px;
+          right: 10px;
+          width: 320px;
+          background: rgba(18, 18, 22, 0.95);
           backdrop-filter: blur(20px);
-          -webkit-backdrop-filter: blur(20px);
-          border-top: 1px solid rgba(255,255,255,0.1);
-          border-radius: 16px 16px 0 0;
+          border: 1px solid rgba(255,255,255,0.15);
+          border-radius: 16px;
+          box-shadow: 0 10px 30px rgba(0,0,0,0.6);
+          display: none;
+          flex-direction: column;
+          z-index: 2000;
+          pointer-events: auto;
+        }
+        #emoji-picker-container.visible { display: flex; }
+        .picker-header {
+          padding: 10px 14px;
+          font-size: 11px;
+          font-weight: 800;
+          color: rgba(255,255,255,0.4);
+          border-bottom: 1px solid rgba(255,255,255,0.06);
+          display: flex;
+          justify-content: space-between;
+          align-items: center;
+        }
+        .picker-grid {
+          display: grid;
+          grid-template-columns: repeat(8, 1fr);
+          gap: 6px;
+          padding: 12px;
           max-height: 200px;
           overflow-y: auto;
-          pointer-events: auto;
-          animation: slideUp 0.25s cubic-bezier(0.19, 1, 0.22, 1);
         }
-        #full-emoji-picker.visible {
-          display: flex;
-        }
-        #full-emoji-picker::-webkit-scrollbar {
-          width: 4px;
-        }
-        #full-emoji-picker::-webkit-scrollbar-track { background: transparent; }
-        #full-emoji-picker::-webkit-scrollbar-thumb {
-          background: rgba(255,255,255,0.2);
-          border-radius: 2px;
-        }
-        .emoji-grid-item {
-          cursor: pointer;
+        .picker-grid span {
           font-size: 20px;
-          padding: 4px;
-          border-radius: 6px;
-          transition: transform 0.15s, background 0.15s;
-          line-height: 1;
+          cursor: pointer;
+          text-align: center;
+          transition: transform 0.15s;
+          user-select: none;
         }
-        .emoji-grid-item:hover {
-          transform: scale(1.3);
-          background: rgba(255,255,255,0.1);
-        }
+        .picker-grid span:hover { transform: scale(1.3); }
 
-        /* Notifications */
+        /* Reply preview bar */
+        #reply-preview-bar {
+          display: none;
+          background: rgba(20, 20, 25, 0.95);
+          border-left: 3px solid #e52e71;
+          padding: 8px 12px;
+          border-radius: 6px;
+          align-items: center;
+          justify-content: space-between;
+          font-size: 11px;
+          margin-bottom: 4px;
+          pointer-events: auto;
+        }
+        #reply-preview-bar.visible { display: flex; }
+
+        /* System Messages / Notifications */
         .notification {
           align-self: center;
-          font-size: 10px;
-          color: rgba(255, 255, 255, 0.35);
-          background: rgba(255, 255, 255, 0.04);
-          padding: 4px 12px;
-          border-radius: 12px;
-          margin: 4px 0;
+          font-size: 9px;
+          color: rgba(255, 255, 255, 0.4);
+          background: rgba(255, 255, 255, 0.05);
+          padding: 3px 10px;
+          border-radius: 10px;
+          margin: 2px 0;
           text-transform: uppercase;
-          letter-spacing: 0.8px;
+          letter-spacing: 0.5px;
           font-weight: bold;
         }
-
-
-
-        /* Emoji particle effect */
+        
         .emoji-particle {
           position: fixed;
           font-size: 32px;
           pointer-events: none;
           z-index: 2147483647;
           filter: drop-shadow(0 4px 12px rgba(0,0,0,0.4));
-          animation: floatUpBurst 3s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+          animation: floatUpBurst 2.8s cubic-bezier(0.22, 1, 0.36, 1) forwards;
           opacity: 0;
         }
         @keyframes floatUpBurst {
-          0% { transform: translateY(0) scale(0) rotate(0deg); opacity: 0; }
-          20% { transform: translateY(-40px) scale(1.4) rotate(15deg); opacity: 1; }
-          100% { transform: translateY(-500px) scale(0.6) rotate(-25deg); opacity: 0; }
+          0%   { transform: translateY(0) scale(0) rotate(0deg) translateX(0); opacity: 0; }
+          15%  { transform: translateY(-40px) scale(1.4) rotate(12deg) translateX(0); opacity: 1; }
+          100% { transform: translateY(-92vh) scale(0.5) rotate(-20deg) translateX(var(--drift, 0px)); opacity: 0; }
         }
-
-        /* --- BTS V (Taehyung) Theme --- */
-        .bubble.bts {
-          background: linear-gradient(135deg, #7b2ff7 0%, #b19cd9 100%) !important;
-          color: white !important;
-          border-bottom-left-radius: 4px;
-          box-shadow: 0 4px 15px rgba(123, 47, 247, 0.4);
-          position: relative;
-        }
-        .bubble.bts.local {
-          border-bottom-left-radius: 18px;
-          border-bottom-right-radius: 4px;
-        }
-        .remote-name.bts {
-          color: #d1b3ff !important;
-          font-weight: 800;
-          display: flex;
-          align-items: center;
-          gap: 4px;
-        }
-        .bubble.bts::after {
-          content: '🐻';
-          position: absolute;
-          bottom: -8px;
-          right: -8px;
-          font-size: 14px;
-          filter: drop-shadow(0 2px 4px rgba(0,0,0,0.3));
-        }
-        .bubble.bts.local::after {
-          right: auto;
-          left: -8px;
-        }
-
-        /* --- Floating Toast Notifications --- */
-        #toast-container {
-          position: fixed;
-          top: 30px;
-          right: 30px;
-          display: flex;
-          flex-direction: column;
-          align-items: flex-end;
-          gap: 10px;
-          z-index: 2147483647;
-          pointer-events: none;
-        }
-        .toast {
-          background: rgba(15, 15, 19, 0.85);
-          backdrop-filter: blur(12px);
-          -webkit-backdrop-filter: blur(12px);
-          border: 1px solid rgba(255, 255, 255, 0.1);
-          color: #fff;
-          padding: 12px 20px;
-          border-radius: 16px;
-          font-size: 13px;
-          font-weight: 600;
-          box-shadow: 0 10px 30px rgba(0,0,0,0.5);
-          display: flex;
-          align-items: center;
-          gap: 12px;
-          pointer-events: auto;
-          animation: toastIn 0.5s cubic-bezier(0.19, 1, 0.22, 1) forwards,
-                     toastOut 0.4s cubic-bezier(0.19, 1, 0.22, 1) 2.5s forwards;
-        }
-        @keyframes toastIn {
-          from { transform: translateX(50px) scale(0.9); opacity: 0; }
-          to { transform: translateX(0) scale(1); opacity: 1; }
-        }
-        @keyframes toastOut {
-          to { transform: translateX(30px) scale(0.95); opacity: 0; }
-        }
-
-        /* --- Bubble Actions & Replies --- */
-        .bubble { 
-          position: relative; 
-          padding-bottom: 24px !important; /* Make room for icons at bottom */
-          min-width: 80px;
-        }
-        .bubble-actions {
-          position: absolute;
-          bottom: 4px;
-          right: 8px;
-          display: flex;
-          gap: 8px;
-          opacity: 0.6;
-          transition: opacity 0.2s;
-          z-index: 10;
-        }
-        .bubble:hover .bubble-actions { opacity: 1; }
-        
-        .action-icon {
-          cursor: pointer;
-          transition: all 0.2s;
-          color: rgba(255,255,255,0.5);
-          display: flex;
-          align-items: center;
-          justify-content: center;
-        }
-        .action-icon:hover { color: #fff; transform: scale(1.1); }
-        .action-icon.active { color: #ff3b30 !important; }
-        .action-icon svg { width: 14px; height: 14px; stroke-width: 2.5; }
-        
-        .reply-box {
-          background: rgba(255,255,255,0.08);
-          border-left: 3px solid #e52e71;
-          padding: 6px 10px;
-          border-radius: 6px;
-          margin-bottom: 8px;
-          font-size: 11px;
-          max-width: 100%;
-        }
-        .reply-name { font-weight: 900; color: #e52e71; font-size: 9px; text-transform: uppercase; margin-bottom: 2px; }
-        .reply-msg { opacity: 0.6; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-
-        #reply-preview-bar {
-          display: none;
-          background: rgba(20, 20, 25, 0.98);
-          border-top: 2px solid #e52e71;
-          padding: 12px 18px;
-          align-items: center;
-          justify-content: space-between;
-          animation: slideUp 0.3s cubic-bezier(0.19, 1, 0.22, 1) forwards;
-        }
-        #reply-preview-bar.visible { display: flex; }
-        @keyframes slideUp { from { transform: translateY(100%); } to { transform: translateY(0); } }
-
-        .reaction-badge-container {
-          position: absolute;
-          bottom: -12px;
-          left: 12px;
-          display: flex;
-          gap: 4px;
-          flex-wrap: wrap;
-          z-index: 11;
-        }
-        .reaction-badge {
-          background: rgba(30, 30, 35, 0.95);
-          border: 1px solid rgba(255,255,255,0.2);
-          border-radius: 12px;
-          padding: 2px 8px;
-          font-size: 11px;
-          box-shadow: 0 4px 12px rgba(0,0,0,0.4);
-          display: flex;
-          align-items: center;
-          gap: 4px;
-          cursor: pointer;
-        }
-        .reaction-badge.mine {
-          border-color: #e52e71;
-          background: rgba(229, 46, 113, 0.2);
-        }
-
-        /* --- Reaction Picker --- */
-        .reaction-picker {
-          position: absolute;
-          top: -45px;
-          background: rgba(20, 20, 25, 0.98);
-          backdrop-filter: blur(15px);
-          border: 1px solid rgba(255,255,255,0.2);
-          border-radius: 20px;
-          padding: 8px 14px;
-          display: none;
-          gap: 12px;
-          z-index: 1000;
-          box-shadow: 0 10px 40px rgba(0,0,0,0.8);
-          animation: popIn 0.3s cubic-bezier(0.19, 1, 0.22, 1) forwards;
-          white-space: nowrap;
-        }
-        .remote .reaction-picker { left: 0; }
-        .local .reaction-picker { right: 0; }
-        .reaction-picker.visible { display: flex; }
-        @keyframes popIn { from { transform: scale(0.5) translateY(20px); opacity: 0; } to { transform: scale(1) translateY(0); opacity: 1; } }
-        
-        .picker-emoji { cursor: pointer; font-size: 22px; transition: transform 0.2s; }
-        .picker-emoji:hover { transform: scale(1.4); }
-
       </style>
 
-      <div id="toast-container"></div>
-
       <div id="visionSync-dock">
+        <div id="dock-drag-handle"></div>
+
         <div class="dock-icon" id="copy-room-btn" title="Copy Room URL">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"></path><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"></path></svg>
         </div>
         <div class="dock-icon muted" id="toggle-chat-btn" title="Toggle Chat">
-          <!-- Chat Closed SVG (Gray + Slash) -->
           <svg id="chat-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
             <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path>
             <line x1="3" y1="3" x2="21" y2="21" stroke="rgba(255,255,255,0.4)" stroke-width="2.5"></line>
           </svg>
-          <span id="unread-badge" style="display:none; position:absolute; top: -8px; right: -8px; background: #ff0000; color: #fff; min-width: 18px; height: 18px; border-radius: 9px; font-size: 10px; align-items: center; justify-content: center; font-weight: 900; box-shadow: 0 2px 6px rgba(255,0,0,0.4); border: 2px solid #0f0f13;">0</span>
+          <span id="unread-badge" style="display:none; position:absolute; top: -8px; right: -8px; background: #ff0000; color: #fff; min-width: 16px; height: 16px; border-radius: 8px; font-size: 9px; align-items: center; justify-content: center; font-weight: 900; box-shadow: 0 2px 6px rgba(255,0,0,0.4); border: 2px solid #0f0f13;">0</span>
         </div>
-        <div class="dock-icon exit" id="exit-room-btn" title="Exit Room and Cleanup">
+        <div class="dock-icon exit" id="exit-room-btn" title="Exit Room">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"></path><polyline points="16 17 21 12 16 7"></polyline><line x1="21" y1="12" x2="9" y2="12"></line></svg>
         </div>
       </div>
 
-      <!-- Floating Users at Top Right -->
-      <div id="floating-users-container"></div>
-
       <div id="chat-container">
-        <div id="chat-drag-handle"></div>
-        <div id="chat-body"></div>
+        <div id="chat-body">
+          <!-- Spacer at top allows flexing items to bottom while keeping scrolling working perfectly -->
+          <div id="chat-body-spacer" style="margin-top: auto;"></div>
+        </div>
         
-        <div id="full-emoji-picker"></div>
+
         <div id="reply-preview-bar">
           <div style="flex-grow:1">
-            <div id="reply-to-name" style="color:#e52e71; font-size:10px; font-weight:900; text-transform:uppercase">Replying</div>
-            <div id="reply-to-msg" style="color:rgba(255,255,255,0.6); font-size:12px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis">Message preview...</div>
+            <div id="reply-to-name" style="color:#e52e71; font-weight:900; text-transform:uppercase; font-size:9px;">Replying...</div>
+            <div id="reply-to-msg" style="color:rgba(255,255,255,0.6); white-space:nowrap; overflow:hidden; text-overflow:ellipsis">Message preview</div>
           </div>
           <span id="cancel-reply-btn" style="cursor:pointer; padding:5px; font-size:12px">✕</span>
         </div>
-        
-        <div id="chat-input-wrapper">
-          <div id="emoji-toggle-btn" title="Emojis">😀</div>
-          <input type="text" id="chat-input" placeholder="Say something..." autocomplete="off">
+
+        <div id="users-and-input-container">
+          <div id="typing-indicator" style="display:none;">
+            <span class="typing-text">someone is typing</span>
+            <div class="typing-dots"><span></span><span></span><span></span></div>
+          </div>
+
+          <!-- Movie-level reaction bar (8 slots) -->
+          <div id="reaction-bar"></div>
+
+          <div id="input-row">
+            <div class="input-btn" id="customize-movie-btn" title="Customize Movie Reactions">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:16px;height:16px;">
+                <circle cx="12" cy="12" r="3"></circle>
+                <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"></path>
+              </svg>
+            </div>
+            <input type="text" id="chat-input" placeholder="Type a message..." autocomplete="off">
+            <button class="send-btn" id="send-chat-btn">Send</button>
+          </div>
         </div>
+
+        <!-- Central Emoji Picker -->
+        <div id="emoji-picker-container">
+          <div class="picker-header">
+            <span id="picker-title">SELECT EMOJI</span>
+            <span id="close-picker-btn" style="cursor:pointer;">✕</span>
+          </div>
+          <div class="picker-grid" id="picker-grid"></div>
+        </div>
+        <div id="chat-drag-handle"></div>
       </div>
     `;
 
@@ -755,129 +686,423 @@ class GhostChat {
     this.chatContainer = this.shadowRoot.getElementById('chat-container');
     this.unreadBadge = this.shadowRoot.getElementById('unread-badge');
 
-    // Adaptive Fullscreen handler
-    document.addEventListener('fullscreenchange', () => {
-      const fsEl = document.fullscreenElement;
+    this.renderMovieReactionItems();
+    this.renderEmojiPicker();
+
+    // Auto fullscreen injection - keep scroll pinned to bottom after move
+    const handleFs = () => {
+      const fsEl = document.fullscreenElement || document.webkitFullscreenElement;
       if (fsEl) {
         fsEl.appendChild(this.container);
-        this.container.classList.add('fullscreen');
       } else {
         document.body.appendChild(this.container);
-        this.container.classList.remove('fullscreen');
       }
+      // Restore scroll position after DOM re-attach
+      requestAnimationFrame(() => this.scrollToBottom());
+    };
+    document.addEventListener('fullscreenchange', handleFs);
+    document.addEventListener('webkitfullscreenchange', handleFs);
+
+    // ResizeObserver: keep chat pinned to bottom when viewport resizes
+    const ro = new ResizeObserver(() => {
+      this.scrollToBottom();
+    });
+    // Observe after a tick so this.chatBody is assigned
+    requestAnimationFrame(() => {
+      if (this.chatBody) ro.observe(this.chatBody);
     });
 
-    this.unreadCount = 0;
-    this.roomId = '';
+    // Dismiss any open message reaction overlay on click outside (shadow root level)
+    this.shadowRoot.addEventListener('click', (e) => {
+      const overlays = this.shadowRoot.querySelectorAll('.msg-reactions-picker-overlay.visible');
+      overlays.forEach(overlay => {
+        if (!overlay.contains(e.target)) {
+          overlay.classList.remove('visible');
+        }
+      });
+    }, true);
   }
 
-  setupDrag() {
-    const container = this.chatContainer;
-    let isDragging = false;
-    let initialX, initialY, xOffset = 0, yOffset = 0;
+  // Renders the 8 movie-level burst reactions
+  renderMovieReactionItems() {
+    const bar = this.shadowRoot.getElementById('reaction-bar');
+    if (!bar) return;
+    bar.innerHTML = '';
 
-    const dragHandle = this.shadowRoot.getElementById('chat-drag-handle');
-    if (!dragHandle) return;
+    this.movieReactions.forEach((emoji, idx) => {
+      const span = document.createElement('span');
+      span.className = 'reaction-item';
+      if (this.movieCustomizeActive) span.classList.add('customizing');
+      span.textContent = emoji;
+      span.dataset.idx = idx;
 
-    const dragStart = (e) => {
-      e.preventDefault();
-      initialX = e.clientX - xOffset;
-      initialY = e.clientY - yOffset;
-      isDragging = true;
-      container.style.cursor = 'grabbing';
-    };
-    const dragEnd = () => {
-      isDragging = false;
-      container.style.cursor = '';
-    };
-    const drag = (e) => {
-      if (!isDragging) return;
-      e.preventDefault();
-      xOffset = e.clientX - initialX;
-      yOffset = e.clientY - initialY;
-      container.style.transform = `translate3d(${xOffset}px, ${yOffset}px, 0)`;
-    };
+      span.addEventListener('click', () => {
+        if (this.movieCustomizeActive) {
+          this.toggleSlotCustomizing(idx, 'movie');
+        } else {
+          this.triggerEmojiBurst(emoji);
+          this.callEngine('broadcast', { type: 'EMOJI', emoji });
+        }
+      });
 
-    dragHandle.addEventListener('mousedown', dragStart);
-    document.addEventListener('mouseup', dragEnd);
-    document.addEventListener('mousemove', drag);
+      bar.appendChild(span);
+    });
+
+    // '+' button: pick any emoji for a one-off burst without touching saved slots
+    const addBtn = document.createElement('span');
+    addBtn.className = 'reaction-item';
+    addBtn.style.cssText = 'font-size:14px; color:rgba(255,255,255,0.5); border:1px dashed rgba(255,255,255,0.25); border-radius:6px; padding:1px 4px;';
+    addBtn.title = 'Burst any emoji';
+    addBtn.innerHTML = `
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="width:14px;height:14px;vertical-align:middle;">
+        <line x1="12" y1="5" x2="12" y2="19"></line>
+        <line x1="5" y1="12" x2="19" y2="12"></line>
+      </svg>
+    `;
+    addBtn.addEventListener('click', () => {
+      this.burstPickerMode = true;
+      const picker = this.shadowRoot.getElementById('emoji-picker-container');
+      const title = this.shadowRoot.getElementById('picker-title');
+      title.textContent = 'BURST ANY EMOJI';
+      picker.classList.toggle('visible');
+    });
+    bar.appendChild(addBtn);
+  }
+
+  renderEmojiPicker() {
+    const grid = this.shadowRoot.getElementById('picker-grid');
+    if (!grid) return;
+    grid.innerHTML = '';
+
+    const popularEmojis = [
+      '👍', '❤️', '😂', '😮', '😢', '🔥', '👀', '🍿', '💯', '✨', '🎉', '👏',
+      '👎', '🙌', '🙏', '😎', '🤔', '🥳', '😡', '😱', '💩', '🤡', '👽', '👻',
+      '👑', '🐻', '🐰', '💜', '🌟', '💡', '💥', '🍕', '🍿', '🍺', '🎬', '🎮',
+      '🎧', '🎤', '🚗', '✈️', '🌍', '⏰', '🔒', '💔', '💖', '✅', '❌', '🎵',
+      '⚽', '🏀', '🐱', '🐶', '🦄', '🌈', '☀️', '🌧️', '🎂', '🎁', '🚀', '⚡'
+    ];
+
+    popularEmojis.forEach(emoji => {
+      const span = document.createElement('span');
+      span.textContent = emoji;
+      span.addEventListener('click', () => {
+        const picker = this.shadowRoot.getElementById('emoji-picker-container');
+
+        if (this.customizingSlotIndex !== null) {
+          if (this.customizingTargetType === 'msg') {
+            // Replace message reaction slot
+            this.msgReactions[this.customizingSlotIndex] = emoji;
+            this.savePreference();
+            // Refresh open active bubble picker if any
+            const activeOverlays = this.shadowRoot.querySelectorAll('.msg-reactions-picker-overlay.visible');
+            activeOverlays.forEach(overlay => this.populateOverlayReactions(overlay));
+          } else if (this.customizingTargetType === 'movie') {
+            // Replace movie reaction slot
+            this.movieReactions[this.customizingSlotIndex] = emoji;
+            this.savePreference();
+            this.renderMovieReactionItems();
+          }
+          this.toggleSlotCustomizing(null, null);
+        } else if (this.burstPickerMode) {
+          // One-off burst — no slot replacement
+          // Do not reset mode or close picker here, so user can burst multiple emojis
+          this.triggerEmojiBurst(emoji);
+          this.callEngine('broadcast', { type: 'EMOJI', emoji });
+          return; // Return early to prevent picker.classList.remove('visible')
+        } else if (this.msgReactionPickerMode) {
+          // One-off message reaction
+          this.msgReactionPickerMode = false;
+          const targetMsgId = this.msgReactionPickerTarget;
+          this.msgReactionPickerTarget = null;
+          const title = this.shadowRoot.getElementById('picker-title');
+          title.textContent = 'SELECT EMOJI';
+          
+          const bubble = this.shadowRoot.querySelector(`[data-msg-id="${targetMsgId}"]`);
+          if (bubble) {
+            const myId = this.localSocketId || 'local';
+            const currentEmoji = bubble.dataset.myEmoji;
+            const newEmoji = (currentEmoji === emoji) ? null : emoji;
+            bubble.dataset.myEmoji = newEmoji || "";
+
+            this.addReactionToBubble(bubble, newEmoji, myId);
+            this.callEngine('broadcast', {
+              type: 'MESSAGE_REACTION',
+              msgId: targetMsgId,
+              emoji: newEmoji,
+              senderId: myId
+            });
+          }
+        } else {
+          // Standard input insertion
+          const input = this.shadowRoot.getElementById('chat-input');
+          input.value += emoji;
+          input.focus();
+        }
+        picker.classList.remove('visible');
+      });
+      grid.appendChild(span);
+    });
+  }
+
+  toggleSlotCustomizing(idx, targetType) {
+    // Clear customizing classes
+    const movieItems = this.shadowRoot.querySelectorAll('.reaction-item');
+    movieItems.forEach(el => el.classList.remove('customizing'));
+
+    const overlayEmojis = this.shadowRoot.querySelectorAll('.msg-picker-emoji');
+    overlayEmojis.forEach(el => el.classList.remove('customizing'));
+
+    const title = this.shadowRoot.getElementById('picker-title');
+    const picker = this.shadowRoot.getElementById('emoji-picker-container');
+
+    if (idx === null) {
+      this.customizingSlotIndex = null;
+      this.customizingTargetType = null;
+      title.textContent = 'SELECT EMOJI';
+      picker.classList.remove('visible');
+
+      // Also reset editing mode visual outlines
+      if (this.movieCustomizeActive) {
+        this.toggleMovieCustomizeMode();
+      }
+      
+      // Reset any active message reaction overlays to un-click the gear
+      const activeOverlays = this.shadowRoot.querySelectorAll('.msg-reactions-picker-overlay');
+      activeOverlays.forEach(overlay => {
+        if (overlay.customizeActive) {
+          overlay.customizeActive = false;
+          this.populateOverlayReactions(overlay);
+        }
+      });
+    } else {
+      this.customizingSlotIndex = idx;
+      this.customizingTargetType = targetType;
+      title.textContent = `REPLACE SLOT #${idx + 1}`;
+
+      if (targetType === 'movie') {
+        movieItems[idx].classList.add('customizing');
+      } else if (targetType === 'msg') {
+        const activeOverlays = this.shadowRoot.querySelectorAll('.msg-reactions-picker-overlay.visible');
+        activeOverlays.forEach(overlay => {
+          const item = overlay.querySelector(`[data-idx="${idx}"]`);
+          if (item) item.classList.add('customizing');
+        });
+      }
+      picker.classList.add('visible');
+    }
+  }
+
+  toggleMovieCustomizeMode() {
+    this.movieCustomizeActive = !this.movieCustomizeActive;
+    const btn = this.shadowRoot.getElementById('customize-movie-btn');
+    const items = this.shadowRoot.querySelectorAll('.reaction-item');
+    if (this.movieCustomizeActive) {
+      btn.classList.add('active');
+      btn.style.color = '#ff8a00';
+      items.forEach(el => el.classList.add('customizing'));
+    } else {
+      btn.classList.remove('active');
+      btn.style.color = '';
+      items.forEach(el => el.classList.remove('customizing'));
+    }
+  }
+
+  savePreference() {
+    chrome.storage.local.set({
+      customMsgReactions: this.msgReactions,
+      customMovieReactions: this.movieReactions
+    });
+
+    if (this.currentUserGoogleId) {
+      const FIREBASE_CONFIG = {
+        apiKey: "AIzaSyBMLd0WLDelhXVXbZ-MZUlFo7nxt9pauQA",
+        projectId: "visionsync-elite",
+      };
+      // PATCH call updating BOTH customization slots on profile
+      const url = `https://firestore.googleapis.com/v1/projects/${FIREBASE_CONFIG.projectId}/databases/(default)/documents/users/${this.currentUserGoogleId}?key=${FIREBASE_CONFIG.apiKey}&updateMask.fieldPaths=messageReactions&updateMask.fieldPaths=screenReactions`;
+
+      fetch(url, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          fields: {
+            messageReactions: {
+              arrayValue: {
+                values: this.msgReactions.map(e => ({ stringValue: e }))
+              }
+            },
+            screenReactions: {
+              arrayValue: {
+                values: this.movieReactions.map(e => ({ stringValue: e }))
+              }
+            }
+          }
+        })
+      }).catch(err => console.warn('[VisionSync] savePreference failed:', err));
+    }
+  }
+
+  loadPreferences() {
+    if (!this.currentUserGoogleId) return;
+    const FIREBASE_CONFIG = {
+      apiKey: "AIzaSyBMLd0WLDelhXVXbZ-MZUlFo7nxt9pauQA",
+      projectId: "visionsync-elite",
+    };
+    const url = `https://firestore.googleapis.com/v1/projects/${FIREBASE_CONFIG.projectId}/databases/(default)/documents/users/${this.currentUserGoogleId}?key=${FIREBASE_CONFIG.apiKey}`;
+
+    fetch(url)
+      .then(res => res.json())
+      .then(data => {
+        const msgVals = data.fields?.messageReactions?.arrayValue?.values;
+        if (msgVals && Array.isArray(msgVals)) {
+          const loadedMsg = msgVals.map(v => v.stringValue).filter(Boolean);
+          if (loadedMsg.length === 5) {
+            this.msgReactions = loadedMsg;
+            chrome.storage.local.set({ customMsgReactions: loadedMsg });
+          }
+        }
+        const movieVals = data.fields?.screenReactions?.arrayValue?.values;
+        if (movieVals && Array.isArray(movieVals)) {
+          const loadedMovie = movieVals.map(v => v.stringValue).filter(Boolean);
+          if (loadedMovie.length > 0) {
+            this.movieReactions = loadedMovie;
+            chrome.storage.local.set({ customMovieReactions: loadedMovie });
+            this.renderMovieReactionItems();
+          }
+        }
+      })
+      .catch(err => console.warn('[VisionSync] loadPreferences failed:', err));
   }
 
   setupListeners() {
+    // ─── Dock Drag (left side, constrained to vertical movement only) ───
+    const dock = this.shadowRoot.getElementById('visionSync-dock');
+    const dockDragHandle = this.shadowRoot.getElementById('dock-drag-handle');
+    let dockDragging = false, dockStartY = 0, dockStartTop = 0;
+
+    const startDockDrag = (e) => {
+      dockDragging = true;
+      dockStartY = e.clientY || (e.touches && e.touches[0].clientY);
+      dockStartTop = dock.getBoundingClientRect().top;
+      dock.style.transform = 'none';
+      dock.style.top = dockStartTop + 'px';
+      e.preventDefault();
+    };
+    dockDragHandle.addEventListener('mousedown', startDockDrag);
+    dockDragHandle.addEventListener('touchstart', startDockDrag, { passive: false });
+
+    document.addEventListener('mousemove', (e) => {
+      if (!dockDragging) return;
+      const dy = e.clientY - dockStartY;
+      const newTop = Math.max(10, Math.min(window.innerHeight - dock.offsetHeight - 10, dockStartTop + dy));
+      dock.style.top = newTop + 'px';
+    });
+    document.addEventListener('touchmove', (e) => {
+      if (!dockDragging) return;
+      const dy = e.touches[0].clientY - dockStartY;
+      const newTop = Math.max(10, Math.min(window.innerHeight - dock.offsetHeight - 10, dockStartTop + dy));
+      dock.style.top = newTop + 'px';
+    }, { passive: true });
+    const stopDockDrag = () => { dockDragging = false; };
+    document.addEventListener('mouseup', stopDockDrag);
+    document.addEventListener('touchend', stopDockDrag);
+
+    // ─── Chat Container Drag ───
+    const chatEl = this.shadowRoot.getElementById('chat-container');
+    const chatDragHandle = this.shadowRoot.getElementById('chat-drag-handle');
+    let chatDragging = false, chatStartX = 0, chatStartY = 0, chatStartLeft = 0, chatStartBottom = 0;
+
+    const startChatDrag = (e) => {
+      chatDragging = true;
+      const clientX = e.clientX || (e.touches && e.touches[0].clientX);
+      const clientY = e.clientY || (e.touches && e.touches[0].clientY);
+      const rect = chatEl.getBoundingClientRect();
+      chatStartX = clientX;
+      chatStartY = clientY;
+      chatStartLeft = rect.left;
+      chatStartBottom = window.innerHeight - rect.bottom;
+      chatEl.style.right = 'auto';
+      chatEl.style.left = chatStartLeft + 'px';
+      chatEl.style.bottom = chatStartBottom + 'px';
+      e.preventDefault();
+    };
+    chatDragHandle.addEventListener('mousedown', startChatDrag);
+    chatDragHandle.addEventListener('touchstart', startChatDrag, { passive: false });
+
+    document.addEventListener('mousemove', (e) => {
+      if (!chatDragging) return;
+      const dx = e.clientX - chatStartX;
+      const dy = e.clientY - chatStartY;
+      const newLeft = Math.max(0, Math.min(window.innerWidth - chatEl.offsetWidth, chatStartLeft + dx));
+      const newBottom = Math.max(0, Math.min(window.innerHeight - chatEl.offsetHeight, chatStartBottom - dy));
+      chatEl.style.left = newLeft + 'px';
+      chatEl.style.bottom = newBottom + 'px';
+    });
+    document.addEventListener('touchmove', (e) => {
+      if (!chatDragging) return;
+      const dx = e.touches[0].clientX - chatStartX;
+      const dy = e.touches[0].clientY - chatStartY;
+      const newLeft = Math.max(0, Math.min(window.innerWidth - chatEl.offsetWidth, chatStartLeft + dx));
+      const newBottom = Math.max(0, Math.min(window.innerHeight - chatEl.offsetHeight, chatStartBottom - dy));
+      chatEl.style.left = newLeft + 'px';
+      chatEl.style.bottom = newBottom + 'px';
+    }, { passive: true });
+    const stopChatDrag = () => { chatDragging = false; };
+    document.addEventListener('mouseup', stopChatDrag);
+    document.addEventListener('touchend', stopChatDrag);
+
     const input = this.shadowRoot.getElementById('chat-input');
+    const sendBtn = this.shadowRoot.getElementById('send-chat-btn');
     const toggleChatBtn = this.shadowRoot.getElementById('toggle-chat-btn');
     const copyBtn = this.shadowRoot.getElementById('copy-room-btn');
     const exitBtn = this.shadowRoot.getElementById('exit-room-btn');
-    const emojiToggleBtn = this.shadowRoot.getElementById('emoji-toggle-btn');
-    const fullEmojiPicker = this.shadowRoot.getElementById('full-emoji-picker');
+    const cancelReplyBtn = this.shadowRoot.getElementById('cancel-reply-btn');
+    const closePickerBtn = this.shadowRoot.getElementById('close-picker-btn');
+    const customizeMovieBtn = this.shadowRoot.getElementById('customize-movie-btn');
 
-    // --- Build Full Emoji Picker ---
-    const EMOJIS = [
-      // Smileys
-      '😀','😁','😂','🤣','😃','😄','😅','😆','😊','😉','😋','😎','😍','🥰','😘','😗','🤩','😏','😒','😞','😔','😟','😕','🙁','😣','😖','😫','😩','🥺','😢','😭','😤','😠','😡','🤬','🤯','😳','😱','😨','😰','😥','🤗','🫡','🤔','🫠','🤭','🤫','🤥','😶','😐','😑','😬','🙄','😯','😦','😧','😮','🥱','😴','🤤','😪','🫨','🤢','🤮','🤧','🥵','🥶','🥴','😵','🤠',
-      // Hands & Gestures
-      '👍','👎','👌','🤌','🤏','✌️','🤞','🫰','🤟','🤘','🤙','👈','👉','👆','🖕','👇','☝️','🫵','👋','🤚','🖐️','✋','🖖','🫱','🤝','🙏','👏','🫶','💪','🦾','🙌',
-      // Hearts
-      '❤️','🧡','💛','💚','💙','💜','🖤','🤍','🤎','💔','❣️','💕','💞','💓','💗','💖','💘','💝','💟','♥️','♾️',
-      // Objects & Fun
-      '🔥','⭐','✨','💫','🌟','🎉','🎊','🎈','🎁','🎶','🎵','🎤','📱','💻','🖥️','🎮','🍕','🍔','🍟','🌮','🍣','🍜','🍩','🍪','🍰','🎂','☕','🧋','🥤','🍺','🥂','🫧','🎬','🎥','📽️','🍿','🏆','⚽','🏀','🎯','🎲','🚀','🌈','⚡','🌙','☀️','🌊','🌸','🌺','🌻','🌹',
-      // Symbols
-      '💯','🔞','🆘','✅','❌','❓','❕','‼️','💬','💭','🔔','🔕','🆕','🆒','🎭','🎪','🙀',
-    ];
 
-    EMOJIS.forEach(em => {
-      const btn = document.createElement('span');
-      btn.classList.add('emoji-grid-item');
-      btn.textContent = em;
-      btn.addEventListener('click', (e) => {
-        e.stopPropagation();
-        input.value += em;
-        input.focus();
-        // Don't close picker so user can pick multiple
+    const handleSendMessage = () => {
+      const text = input.value.trim();
+      if (!text) return;
+
+      const msgId = 'msg-' + Date.now() + '-' + Math.floor(Math.random() * 1000);
+
+      this.addMessage(text, true, '', this.currentReply, msgId, this.currentUserEmail, this.currentUserTheme, this.currentUserRole, this.currentUserPhoto);
+
+      this.callEngine('broadcast', {
+        type: 'CHAT',
+        text: text,
+        sender: this.lastUserName,
+        userEmail: this.currentUserEmail || '',
+        userTheme: this.currentUserTheme || '',
+        userRole: this.currentUserRole || '',
+        userPhoto: this.currentUserPhoto || '',
+        replyTo: this.currentReply,
+        msgId: msgId
       });
-      fullEmojiPicker.appendChild(btn);
-    });
 
-    // Toggle picker visibility
-    emojiToggleBtn.addEventListener('click', (e) => {
-      e.stopPropagation();
-      fullEmojiPicker.classList.toggle('visible');
-    });
-    // Close picker when clicking outside
-    document.addEventListener('click', () => fullEmojiPicker.classList.remove('visible'));
+      input.value = '';
+      this.currentReply = null;
+      this.shadowRoot.getElementById('reply-preview-bar').classList.remove('visible');
+      this.callEngine('broadcast', { type: 'TYPING', senderName: this.lastUserName, isTyping: false });
+    };
 
     input.addEventListener('keypress', (e) => {
       e.stopPropagation();
-      if (e.key === 'Enter' && input.value.trim() !== '') {
-        const text = input.value.trim();
-        const msgId = 'msg-' + Date.now() + '-' + Math.floor(Math.random() * 1000);
-
-        // Add locally immediately
-        this.addMessage(text, true, '', this.currentReply, msgId, this.currentUserEmail, this.currentUserTheme);
-
-        if (text) {
-          this.callEngine('broadcast', {
-            type: 'CHAT',
-            text: text,
-            sender: this.lastUserName,
-            userEmail: this.currentUserEmail || '',
-            userTheme: this.currentUserTheme || '',
-            userRole: this.currentUserRole || '',
-            userPhoto: this.currentUserPhoto || '',
-            replyTo: this.currentReply,
-            msgId: msgId
-          });
-        }
-        input.value = '';
-        this.currentReply = null;
-        this.shadowRoot.getElementById('reply-preview-bar').classList.remove('visible');
+      if (e.key === 'Enter') {
+        handleSendMessage();
       }
     });
 
-    // Cancel Reply Listener
-    this.shadowRoot.getElementById('cancel-reply-btn').addEventListener('click', () => {
-      this.currentReply = null;
-      this.shadowRoot.getElementById('reply-preview-bar').classList.remove('visible');
+    sendBtn.addEventListener('click', handleSendMessage);
+
+    // Typing notice
+    input.addEventListener('input', () => {
+      this.callEngine('broadcast', { type: 'TYPING', senderName: this.lastUserName, isTyping: true });
+      if (this.typingTimeout) clearTimeout(this.typingTimeout);
+      this.typingTimeout = setTimeout(() => {
+        this.callEngine('broadcast', { type: 'TYPING', senderName: this.lastUserName, isTyping: false });
+      }, 2500);
     });
 
     input.addEventListener('keydown', (e) => e.stopPropagation());
@@ -893,12 +1118,10 @@ class GhostChat {
         this.clearUnreadBadge();
         toggleChatBtn.classList.add('active');
         toggleChatBtn.classList.remove('muted');
-        // Remove slash line
         chatSvg.innerHTML = `<path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path>`;
       } else {
         toggleChatBtn.classList.remove('active');
         toggleChatBtn.classList.add('muted');
-        // Add slash line
         chatSvg.innerHTML = `
           <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path>
           <line x1="3" y1="3" x2="21" y2="21" stroke="rgba(255,255,255,0.4)" stroke-width="2.5"></line>
@@ -906,29 +1129,44 @@ class GhostChat {
       }
     });
 
-    const copyFunc = () => {
+    customizeMovieBtn.addEventListener('click', () => {
+      this.toggleMovieCustomizeMode();
+    });
+
+    closePickerBtn.addEventListener('click', () => {
+      this.shadowRoot.getElementById('emoji-picker-container').classList.remove('visible');
+      this.burstPickerMode = false;
+      this.msgReactionPickerMode = false;
+      const title = this.shadowRoot.getElementById('picker-title');
+      title.textContent = 'SELECT EMOJI';
+      this.toggleSlotCustomizing(null, null);
+    });
+
+    cancelReplyBtn.addEventListener('click', () => {
+      this.currentReply = null;
+      this.shadowRoot.getElementById('reply-preview-bar').classList.remove('visible');
+    });
+
+    copyBtn.addEventListener('click', () => {
       const url = this.roomId || window.location.href;
-      navigator.clipboard.writeText(url).then(() => this.showNotification('URL Copied!'));
-    };
-    copyBtn.addEventListener('click', copyFunc);
+      navigator.clipboard.writeText(url).then(() => this.addSystemMessage('Room link copied!'));
+    });
 
     exitBtn.addEventListener('click', () => {
-      if (confirm('Leave this watch party and cleanup room state?')) this.cleanup();
+      if (confirm('Leave this watch party?')) this.cleanup();
     });
   }
 
   cleanup() {
     this.container.classList.remove('active');
-
-    // Clear chat payload and UI state
     this.chatBody.innerHTML = '';
     this.clearUnreadBadge();
-
-    // Hide chat box panel securely
     this.chatContainer.classList.remove('visible');
+
     const toggleChatBtn = this.shadowRoot.getElementById('toggle-chat-btn');
     toggleChatBtn.classList.remove('active');
     toggleChatBtn.classList.add('muted');
+
     const chatSvg = this.shadowRoot.getElementById('chat-svg');
     chatSvg.innerHTML = `
       <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path>
@@ -937,7 +1175,6 @@ class GhostChat {
 
     this.callEngine('leaveRoom');
     chrome.storage.local.remove(['currentRoomId', 'isJoined']);
-    // Do NOT remove the shadow DOM container so it can be reused on rejoin
     console.log('[VisionSync Elite] UI Cleaned up securely without unmounting');
   }
 
@@ -946,331 +1183,259 @@ class GhostChat {
     this.lastUserName = userName;
     this.container.classList.add('active');
 
-    // Ensure UI is visible in Full Screen
-    const handleFullScreen = () => {
-      const fsElement = document.fullscreenElement || document.webkitFullscreenElement;
-      if (fsElement) {
-        fsElement.appendChild(this.container);
-      } else {
-        document.body.appendChild(this.container);
-      }
-    };
-    document.addEventListener('fullscreenchange', handleFullScreen);
-    document.addEventListener('webkitfullscreenchange', handleFullScreen);
-    handleFullScreen(); // Initial check
-
-    // Rapunzel Dock & Chat Overhaul if VIP
     const dock = this.shadowRoot.getElementById('visionSync-dock');
-    const chatContainer = this.shadowRoot.getElementById('chat-container');
     const isMagic = userName && userName.match(/abeera|jennie/i);
     const isBTS = userName && userName.match(/rose|ayesha/i);
 
     if (isMagic) {
-      dock.style.background = 'rgba(128, 77, 168, 0.45)';
-      dock.style.boxShadow = '0 10px 40px rgba(162,110,212,0.8)';
-      dock.style.border = '1px solid rgba(255,204,112,0.6)';
-
-      chatContainer.style.background = 'rgba(128, 77, 168, 0.35)';
-      chatContainer.style.border = '1px solid rgba(255,204,112,0.4)';
-      chatContainer.style.boxShadow = '0 20px 50px rgba(162,110,212,0.6)';
+      dock.style.background = 'rgba(128, 77, 168, 0.4)';
+      dock.style.boxShadow = '0 10px 40px rgba(162,110,212,0.6)';
     } else if (isBTS) {
-      dock.style.background = 'rgba(123, 47, 247, 0.45)';
-      dock.style.boxShadow = '0 10px 40px rgba(123, 47, 247, 0.8)';
-      dock.style.border = '1px solid rgba(177, 156, 217, 0.6)';
-
-      chatContainer.style.background = 'rgba(123, 47, 247, 0.35)';
-      chatContainer.style.border = '1px solid rgba(177, 156, 217, 0.4)';
-      chatContainer.style.boxShadow = '0 20px 50px rgba(123, 47, 247, 0.6)';
+      dock.style.background = 'rgba(123, 47, 247, 0.4)';
+      dock.style.boxShadow = '0 10px 40px rgba(123, 47, 247, 0.6)';
     } else {
-      dock.style.background = 'rgba(15, 15, 19, 0.35)';
-      dock.style.boxShadow = '0 10px 40px rgba(0,0,0,0.6)';
-      dock.style.border = '1px solid rgba(255, 255, 255, 0.1)';
-
-      chatContainer.style.background = 'rgba(18, 18, 22, 0.35)';
-      chatContainer.style.border = '1px solid rgba(255, 255, 255, 0.1)';
-      chatContainer.style.boxShadow = '0 20px 50px rgba(0,0,0,0.5)';
+      dock.style.background = 'rgba(15, 15, 19, 0.4)';
+      dock.style.boxShadow = '0 10px 40px rgba(0,0,0,0.5)';
     }
-
-    this.showNotification('Room Joined');
   }
 
   setupEmojiReactions() {
-    this.shadowRoot.querySelectorAll('.reaction-item').forEach(item => {
-      item.addEventListener('click', () => {
-        const emoji = item.dataset.emoji;
-        this.triggerEmojiBurst(emoji);
-        this.callEngine('broadcast', { type: 'EMOJI', emoji });
-      });
-    });
+    // Left legacy signature empty
   }
 
+  // Populate list of 5 emojis inside the message react overlay panel
+  populateOverlayReactions(overlay) {
+    overlay.innerHTML = '';
+
+    this.msgReactions.forEach((emoji, idx) => {
+      const span = document.createElement('span');
+      span.className = 'msg-picker-emoji';
+      if (overlay.customizeActive) span.classList.add('customizing');
+      span.textContent = emoji;
+      span.dataset.idx = idx;
+
+      // Handle normal tap or customization tap
+      span.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const targetMsgId = overlay.dataset.targetMsgId;
+        const myId = this.localSocketId || 'local';
+
+        if (overlay.customizeActive) {
+          this.toggleSlotCustomizing(idx, 'msg');
+          return;
+        }
+
+        const bubble = this.shadowRoot.querySelector(`[data-msg-id="${targetMsgId}"]`);
+        if (bubble) {
+          const currentEmoji = bubble.dataset.myEmoji;
+          const newEmoji = (currentEmoji === emoji) ? null : emoji;
+          bubble.dataset.myEmoji = newEmoji || "";
+
+          this.addReactionToBubble(bubble, newEmoji, myId);
+          this.callEngine('broadcast', {
+            type: 'MESSAGE_REACTION',
+            msgId: targetMsgId,
+            emoji: newEmoji,
+            senderId: myId
+          });
+        }
+        overlay.classList.remove('visible');
+      });
+
+      overlay.appendChild(span);
+    });
+
+    const settingsBtn = document.createElement('span');
+    settingsBtn.className = 'msg-picker-emoji';
+    settingsBtn.innerHTML = `
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:14px;height:14px;vertical-align:middle;">
+        <circle cx="12" cy="12" r="3"></circle>
+        <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"></path>
+      </svg>
+    `;
+    settingsBtn.style.cssText = 'font-size:12px; display:flex; align-items:center; justify-content:center; color:rgba(255,255,255,0.7);';
+    settingsBtn.title = 'Customize Slots';
+    settingsBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      overlay.customizeActive = !overlay.customizeActive;
+      const emojis = overlay.querySelectorAll('.msg-picker-emoji:not(:last-child):not(:nth-last-child(2))');
+      if (overlay.customizeActive) {
+        settingsBtn.style.color = '#ff8a00';
+        emojis.forEach(el => el.classList.add('customizing'));
+      } else {
+        settingsBtn.style.color = 'rgba(255,255,255,0.7)';
+        emojis.forEach(el => el.classList.remove('customizing'));
+        this.toggleSlotCustomizing(null, null);
+      }
+    });
+    overlay.appendChild(settingsBtn);
+
+    // '+' button: pick any emoji to react with
+    const addBtn = document.createElement('span');
+    addBtn.className = 'msg-picker-emoji';
+    addBtn.style.cssText = 'font-size:14px; display:flex; align-items:center; justify-content:center; color:rgba(255,255,255,0.7);';
+    addBtn.title = 'React with any emoji';
+    addBtn.innerHTML = `
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="width:14px;height:14px;vertical-align:middle;">
+        <line x1="12" y1="5" x2="12" y2="19"></line>
+        <line x1="5" y1="12" x2="19" y2="12"></line>
+      </svg>
+    `;
+    addBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      this.msgReactionPickerMode = true;
+      this.msgReactionPickerTarget = overlay.dataset.targetMsgId;
+      const picker = this.shadowRoot.getElementById('emoji-picker-container');
+      const title = this.shadowRoot.getElementById('picker-title');
+      title.textContent = 'REACT WITH EMOJI';
+      picker.classList.add('visible');
+      overlay.classList.remove('visible'); // Close the overlay
+    });
+    overlay.appendChild(addBtn);
+  }
+
+  // Facebook Live style message bubbles
   addMessage(text, isLocal, senderName = '', replyTo = null, msgId = null, senderEmail = '', senderTheme = '', senderRole = '', senderPhoto = '') {
     const row = document.createElement('div');
-    row.classList.add('message-row', isLocal ? 'local' : 'remote');
+    row.className = 'message-row';
 
-    // Identify user properties
-    const trueName = isLocal ? this.lastUserName : senderName;
-    const theme = isLocal ? this.currentUserTheme : senderTheme;
-    const role = isLocal ? this.currentUserRole : senderRole;
+    const name = isLocal ? this.lastUserName : senderName;
     const photo = isLocal ? this.currentUserPhoto : senderPhoto;
 
-    // Avatar Element
-    const avatarWrapper = document.createElement('div');
-    avatarWrapper.classList.add('avatar-crown-wrapper');
-    if (role) avatarWrapper.classList.add(`role-${role}`); // injects .role-owner, .role-developer, etc.
+    // Avatar
+    const avatar = document.createElement('img');
+    avatar.className = 'chat-avatar';
+    avatar.src = photo || `data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='100' height='100' viewBox='0 0 100 100'><circle cx='50' cy='50' r='48' fill='%231f1f23'/><text x='50' y='55' font-family='sans-serif' font-size='40' fill='%23ffffff' text-anchor='middle' dominant-baseline='middle'>${name ? name.charAt(0).toUpperCase() : '?'}</text></svg>`;
+    row.appendChild(avatar);
 
-    const avatarEl = document.createElement('img');
-    avatarEl.classList.add('chat-avatar');
-    avatarEl.src = photo || 'https://www.gravatar.com/avatar/00000000000000000000000000000000?d=mp&f=y'; // fallback
-    
-    if (theme === 'owner-dev' || theme === 'dev') avatarEl.classList.add('theme-owner-dev');
-    else if (theme === 'magic' || theme === 'rapunzel') avatarEl.classList.add('theme-magic');
-    else if (theme === 'bts') avatarEl.classList.add('theme-bts');
-    
-    avatarWrapper.appendChild(avatarEl);
-    row.appendChild(avatarWrapper);
+    // Content area
+    const contentArea = document.createElement('div');
+    contentArea.className = 'msg-content-area';
 
-    // Bubble Element
-    const bubble = document.createElement('div');
-    bubble.classList.add('bubble', isLocal ? 'local' : 'remote');
-    bubble.dataset.msgId = msgId || ('msg-' + Date.now());
+    // Header row
+    const headerRow = document.createElement('div');
+    headerRow.className = 'msg-header-row';
 
-    // Matches dynamic theme from database
-    const isOwnerDev = (theme === 'owner-dev' || theme === 'dev');
-    const isMagic = (theme === 'magic' || theme === 'rapunzel');
-    const isBTS = (theme === 'bts');
+    const usernameSpan = document.createElement('span');
+    usernameSpan.className = 'msg-username';
+    usernameSpan.textContent = name;
+    headerRow.appendChild(usernameSpan);
 
-    if (isOwnerDev) bubble.classList.add('owner-dev');
-    else if (isMagic) bubble.classList.add('magic');
-    else if (isBTS) bubble.classList.add('bts');
+    const now = new Date();
+    const timeSpan = document.createElement('span');
+    timeSpan.className = 'msg-time';
+    timeSpan.textContent = now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    headerRow.appendChild(timeSpan);
 
-    // Always show name in FB Live style (unless it's a direct continuation which we can add later, for now always show)
-    const nameEl = document.createElement('div');
-    nameEl.classList.add('remote-name');
-    
-    if (isOwnerDev) nameEl.classList.add('owner-dev');
-    else if (isMagic) nameEl.classList.add('magic');
-    else if (isBTS) nameEl.classList.add('bts');
+    contentArea.appendChild(headerRow);
 
-    // Role Logic for Titles
-    let title = trueName;
-    if (role === 'owner' && (theme === 'dev' || theme === 'owner-dev')) title = 'Developer & Co Owner';
-
-    nameEl.textContent = title;
-    bubble.appendChild(nameEl);
-
-    // 2. REPLY RENDERING
+    // Minimalist reply box inside the content area
     if (replyTo) {
-      const replyEl = document.createElement('div');
-      replyEl.classList.add('reply-box');
-      replyEl.innerHTML = `
-        <div class="reply-name">${replyTo.sender}</div>
-        <div class="reply-msg">${replyTo.text}</div>
-      `;
-      bubble.appendChild(replyEl);
+      const reply = document.createElement('div');
+      reply.className = 'reply-box';
+
+      const rName = document.createElement('div');
+      rName.className = 'reply-name';
+      rName.textContent = replyTo.sender;
+      reply.appendChild(rName);
+
+      const rMsg = document.createElement('div');
+      rMsg.className = 'reply-msg';
+      rMsg.textContent = replyTo.text;
+      reply.appendChild(rMsg);
+
+      contentArea.appendChild(reply);
     }
 
-    // 3. MESSAGE CONTENT
-    const msgContent = document.createElement('div');
-    msgContent.classList.add('message-text');
-    msgContent.textContent = text;
-    bubble.appendChild(msgContent);
+    // Message text line with reply arrow trigger
+    const textLine = document.createElement('div');
+    textLine.className = 'msg-text-line';
 
-    // 4. BUBBLE ACTIONS (CUSTOM SVG ICONS)
-    const actions = document.createElement('div');
-    actions.classList.add('bubble-actions');
+    const textSpan = document.createElement('span');
+    textSpan.textContent = text;
+    textLine.appendChild(textSpan);
 
-    // Multiple Reactions Picker
-    const picker = document.createElement('div');
-    picker.classList.add('reaction-picker');
-    ['❤️', '😂', '🔥', '😮', '👍', '😢'].forEach(emoji => {
-      const eBtn = document.createElement('span');
-      eBtn.classList.add('picker-emoji');
-      eBtn.textContent = emoji;
-      eBtn.onclick = (e) => {
-        e.stopPropagation();
-        const currentEmoji = bubble.dataset.myEmoji;
+    // Always visible action buttons container
+    const actionButtons = document.createElement('div');
+    actionButtons.className = 'msg-action-buttons';
 
-        // If same emoji, remove it. If different, change it.
-        const newEmoji = (currentEmoji === emoji) ? null : emoji;
-        bubble.dataset.myEmoji = newEmoji || "";
-
-        this.addReactionToBubble(bubble, newEmoji, 'local');
-        picker.classList.remove('visible');
-
-        this.callEngine('broadcast', {
-          type: 'MESSAGE_REACTION',
-          msgId: bubble.dataset.msgId,
-          emoji: newEmoji,
-          senderId: this.localSocketId
-        });
-      };
-      picker.appendChild(eBtn);
-    });
-    bubble.appendChild(picker);
-
-    let deleteHtml = '';
-    if (isLocal) {
-      deleteHtml = `
-        <div class="action-icon delete-btn" title="Delete Message">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>
-        </div>
-      `;
-    }
-
-    actions.innerHTML = `
-      <div class="action-icon reply-btn" title="Reply">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><polyline points="9 17 4 12 9 7"></polyline><path d="M20 18v-2a4 4 0 0 0-4-4H4"></path></svg>
-      </div>
-      <div class="action-icon react-btn" title="React">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"></path></svg>
-      </div>
-      ${deleteHtml}
+    // 1. Reply Arrow Button SVG
+    const replyArrow = document.createElement('span');
+    replyArrow.className = 'msg-action-btn';
+    replyArrow.title = 'Reply';
+    replyArrow.innerHTML = `
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+        <polyline points="9 17 4 12 9 7"></polyline>
+        <path d="M20 18v-2a4 4 0 0 0-4-4H4"></path>
+      </svg>
     `;
-    bubble.appendChild(actions);
-
-    // Click Listeners
-    actions.querySelector('.reply-btn').addEventListener('click', () => {
-      this.currentReply = { text, sender: isLocal ? 'You' : (senderName || 'Someone') };
+    replyArrow.addEventListener('click', () => {
+      this.currentReply = { text, sender: name || 'Someone' };
       const bar = this.shadowRoot.getElementById('reply-preview-bar');
       this.shadowRoot.getElementById('reply-to-name').textContent = `Replying to ${this.currentReply.sender}`;
       this.shadowRoot.getElementById('reply-to-msg').textContent = text;
       bar.classList.add('visible');
       this.shadowRoot.getElementById('chat-input').focus();
     });
+    actionButtons.appendChild(replyArrow);
 
-    const reactBtn = actions.querySelector('.react-btn');
-    reactBtn.addEventListener('click', (e) => {
+    // Bubble reference for reactions storage
+    const bubbleRef = document.createElement('div');
+    bubbleRef.style.display = 'none';
+    bubbleRef.dataset.msgId = msgId || 'msg-' + Date.now();
+    contentArea.appendChild(bubbleRef);
+
+    // Reactions row
+    const reactionsRow = document.createElement('div');
+    reactionsRow.className = 'msg-reactions-row';
+
+    // 5-reactions picker overlay
+    const pickerOverlay = document.createElement('div');
+    pickerOverlay.className = 'msg-reactions-picker-overlay';
+    pickerOverlay.dataset.targetMsgId = bubbleRef.dataset.msgId;
+    this.populateOverlayReactions(pickerOverlay);
+    contentArea.appendChild(pickerOverlay);
+
+    // 2. Add Reaction Smiley Button SVG (Always visible next to reply)
+    const reactionTrigger = document.createElement('span');
+    reactionTrigger.className = 'msg-action-btn';
+    reactionTrigger.title = 'Add Reaction';
+    reactionTrigger.innerHTML = `
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <circle cx="12" cy="12" r="10"></circle>
+        <path d="M8 14s1.5 2 4 2 4-2 4-2"></path>
+        <line x1="9" y1="9" x2="9.01" y2="9"></line>
+        <line x1="15" y1="9" x2="15.01" y2="9"></line>
+      </svg>
+    `;
+    reactionTrigger.addEventListener('click', (e) => {
       e.stopPropagation();
-      picker.classList.toggle('visible');
+      pickerOverlay.classList.toggle('visible');
     });
+    actionButtons.appendChild(reactionTrigger);
 
-    if (isLocal) {
-      actions.querySelector('.delete-btn').addEventListener('click', () => {
-        bubble.remove();
-        this.callEngine('broadcast', {
-          type: 'DELETE_MESSAGE',
-          msgId: bubble.dataset.msgId
-        });
-      });
-    }
+    textLine.appendChild(actionButtons);
+    contentArea.appendChild(textLine);
+    contentArea.appendChild(reactionsRow);
+    row.appendChild(contentArea);
 
-    // Close picker when clicking away
-    document.addEventListener('click', () => picker.classList.remove('visible'));
-
-    row.appendChild(bubble);
     this.chatBody.appendChild(row);
     this.scrollToBottom();
-    if (!isLocal) this.incrementUnreadBadge();
-  }
 
-  incrementUnreadBadge() {
-    if (!this.chatContainer.classList.contains('visible')) {
-      this.unreadCount++;
-      const badge = this.unreadBadge;
-      if (badge) {
-        badge.style.display = 'flex';
-        badge.textContent = this.unreadCount > 9 ? '9+' : this.unreadCount;
-      }
+    if (!isLocal) {
+      this.incrementUnreadBadge();
     }
   }
 
-  clearUnreadBadge() {
-    this.unreadCount = 0;
-    if (this.unreadBadge) this.unreadBadge.style.display = 'none';
-  }
-
-  showNotification(text) {
-    // This is the TOAST system (Outside Chat)
-    const container = this.shadowRoot.getElementById('toast-container');
-    if (!container) return;
-
-    // Filter: Join/Leave should NOT show as Toasts anymore as per user request
-    if (text.includes('joined') || text.includes('left')) return;
-
-    const toast = document.createElement('div');
-    toast.classList.add('toast');
-
-    // VIP Logic for Toast
-    const isOwnerUser = (this.currentUserTheme === 'owner-dev' || this.currentUserTheme === 'dev');
-    const isVIPUser = (this.currentUserTheme === 'magic' || this.currentUserTheme === 'rapunzel');
-    const isBTSUser = (this.currentUserTheme === 'bts');
-    
-    const magicKeywords = ['Highness', 'Queen', 'Kingdom', 'lanterns', 'power', 'Joined', 'joined'];
-    const btsKeywords = ['Winter Bear', 'Borahae', 'Purple', 'Taehyung', 'Joined', 'joined'];
-
-    const textHasMagicKeyword = magicKeywords.some(kw => text.includes(kw));
-    const textHasBTSKeyword = btsKeywords.some(kw => text.includes(kw));
-
-    const isOwnerDev = text.match(/Developer|Co Owner/i) || isOwnerUser;
-    const isMagic = isVIPUser && textHasMagicKeyword;
-    const isBTS = isBTSUser && textHasBTSKeyword;
-
-    let icon = '🔔';
-    if (text.includes('Joined') || text.includes('joined')) icon = '🟢';
-    if (text.includes('left') || text.includes('Left')) icon = '🔴';
-    if (text.includes('Paused') || text.includes('paused')) icon = '⏸️';
-    if (text.includes('Playing') || text.includes('playing')) icon = '▶️';
-    if (text.includes('Seeking') || text.includes('seeking')) icon = '⏩';
-    if (text.includes('Waiting')) icon = '⏳';
-
-    if (isOwnerDev) {
-      toast.style.background = 'linear-gradient(135deg, rgba(229, 46, 113, 0.9), rgba(255, 138, 0, 0.9))';
-      toast.style.border = '1px solid rgba(255,255,255,0.4)';
-      icon = '👑';
-    } else if (isMagic) {
-      toast.style.background = 'linear-gradient(135deg, rgba(162,110,212,0.9), rgba(255,204,112,0.9))';
-      toast.style.border = '1px solid rgba(255,255,255,0.4)';
-      icon = textHasMagicKeyword ? '☀️' : '✨';
-    } else if (isBTS) {
-      toast.style.background = 'linear-gradient(135deg, rgba(123,47,247,0.9), rgba(177,156,217,0.9))';
-      toast.style.border = '1px solid rgba(177, 156, 217, 0.4)';
-      icon = '🐻';
+  showTypingIndicator(name, isTyping) {
+    const indicator = this.shadowRoot.getElementById('typing-indicator');
+    const textEl = indicator.querySelector('.typing-text');
+    if (isTyping) {
+      textEl.textContent = `${name || 'Someone'} is typing`;
+      indicator.style.display = 'flex';
+    } else {
+      indicator.style.display = 'none';
     }
-
-    toast.innerHTML = `<span>${icon}</span> <span>${text}</span>`;
-    container.appendChild(toast);
-
-    // Auto-remove after animation
-    setTimeout(() => toast.remove(), 3000);
-  }
-
-
-  addSystemMessage(text) {
-    // This is the INTERNAL notification system (Inside Chat Body)
-    const notif = document.createElement('div');
-    notif.classList.add('notification');
-
-    // VIP RECOGNITION FOR BURSTS (Only on JOIN)
-    const isJoin = text.toLowerCase().includes('joined');
-    const namePart = text.replace(/ joined/i, '').trim();
-
-    const isMagic = namePart.match(/^(abeera|jennie)$/i);
-    const isBTS = namePart.match(/^(rose|ayesha)$/i);
-
-    if (isJoin) {
-      if (isMagic) {
-        this.triggerEmojiBurst('🌸');
-        setTimeout(() => this.triggerEmojiBurst('✨'), 600);
-      } else if (isBTS) {
-        this.triggerEmojiBurst('💜');
-        setTimeout(() => this.triggerEmojiBurst('🐻'), 600);
-      }
-    }
-
-    let icon = '🔔';
-    if (text.includes('joined')) icon = '🟢';
-    if (text.includes('left')) icon = '🔴';
-
-    notif.textContent = `${icon} ${text}`;
-    this.chatBody.appendChild(notif);
-
-    // Force scroll to bottom to fix full-screen "goes all the way up" issue
-    setTimeout(() => this.scrollToBottom(), 50);
-  }
-  deleteMessage(msgId) {
-    const bubble = this.shadowRoot.querySelector(`[data-msg-id="${msgId}"]`);
-    if (bubble) bubble.remove();
   }
 
   addReaction(msgId, emoji, senderId) {
@@ -1281,62 +1446,115 @@ class GhostChat {
   }
 
   addReactionToBubble(bubble, emoji, senderId) {
-    let container = bubble.querySelector('.reaction-badge-container');
-    if (!container) {
-      container = document.createElement('div');
-      container.classList.add('reaction-badge-container');
-      bubble.appendChild(container);
-    }
+    const row = bubble.closest('.msg-content-area');
+    if (!row) return;
 
-    // Reaction structure: { [emoji]: [userId1, userId2] }
+    const reactionsRow = row.querySelector('.msg-reactions-row');
+    if (!reactionsRow) return;
+
     if (!bubble.reactions) bubble.reactions = {};
 
-    // 1. Remove sender's previous reaction if any
+    // Remove previous reaction from this sender if any
     for (const e in bubble.reactions) {
       bubble.reactions[e] = bubble.reactions[e].filter(id => id !== senderId);
       if (bubble.reactions[e].length === 0) delete bubble.reactions[e];
     }
 
-    // 2. Add new reaction if not null
+    // Add new one
     if (emoji) {
       if (!bubble.reactions[emoji]) bubble.reactions[emoji] = [];
       bubble.reactions[emoji].push(senderId);
     }
 
-    // 3. Render
-    container.innerHTML = '';
+    // Remove old badges
+    const oldBadges = reactionsRow.querySelectorAll('.msg-reaction-badge');
+    oldBadges.forEach(b => b.remove());
+
     const myId = this.localSocketId || 'local';
 
     for (const e in bubble.reactions) {
       const badge = document.createElement('div');
-      badge.classList.add('reaction-badge');
+      badge.className = 'msg-reaction-badge';
       if (bubble.reactions[e].includes(myId)) badge.classList.add('mine');
+      badge.innerHTML = `<span>${e}</span><span>${bubble.reactions[e].length}</span>`;
 
-      badge.innerHTML = `<span>${e}</span> <span>${bubble.reactions[e].length}</span>`;
-      container.appendChild(badge);
+      badge.addEventListener('click', (eEvent) => {
+        eEvent.stopPropagation();
+        const mine = bubble.reactions[e].includes(myId);
+        const newEmoji = mine ? null : e;
+
+        // Track local emoji preference state
+        bubble.dataset.myEmoji = newEmoji || "";
+        this.addReactionToBubble(bubble, newEmoji, myId);
+
+        this.callEngine('broadcast', {
+          type: 'MESSAGE_REACTION',
+          msgId: bubble.dataset.msgId,
+          emoji: newEmoji,
+          senderId: myId
+        });
+      });
+
+      // Append badges into the reactions row
+      reactionsRow.appendChild(badge);
     }
+  }
 
-    if (container.innerHTML === '') container.remove();
+  deleteMessage(msgId) {
+    const bubble = this.shadowRoot.querySelector(`[data-msg-id="${msgId}"]`);
+    if (bubble) {
+      const row = bubble.closest('.message-row');
+      if (row) row.remove();
+    }
+  }
+
+  incrementUnreadBadge() {
+    if (!this.chatContainer.classList.contains('visible')) {
+      this.unreadCount++;
+      this.unreadBadge.style.display = 'flex';
+      this.unreadBadge.textContent = this.unreadCount > 9 ? '9+' : this.unreadCount;
+    }
+  }
+
+  clearUnreadBadge() {
+    this.unreadCount = 0;
+    this.unreadBadge.style.display = 'none';
+  }
+
+  addSystemMessage(text) {
+    const notif = document.createElement('div');
+    notif.className = 'notification';
+    notif.textContent = text;
+    this.chatBody.appendChild(notif);
+    this.scrollToBottom();
+  }
+
+  // Alias used by sync-engine.js callChat('showNotification', ...)
+  // Engine calls this on play/pause/seek/reconnect events
+  showNotification(text) {
+    this.addSystemMessage(text);
   }
 
   triggerEmojiBurst(emoji) {
-    const burstCount = 12;
+    const burstCount = 16;
     for (let i = 0; i < burstCount; i++) {
       setTimeout(() => {
         const el = document.createElement('div');
-        el.classList.add('emoji-particle');
+        el.className = 'emoji-particle';
         el.textContent = emoji;
 
-        // Randomized positions across full screen
-        const startX = Math.random() * 95; // 0 to 95vw
-        const startY = 60 + Math.random() * 30; // Start mostly from lower half
+        // Full-screen spread: random position across the entire bottom of viewport
+        const startX = 3 + Math.random() * 94;
+        const startY = 75 + Math.random() * 20;
 
         el.style.left = startX + 'vw';
         el.style.top = startY + 'vh';
+        // Slight random horizontal drift per particle
+        el.style.setProperty('--drift', (Math.random() * 60 - 30) + 'px');
 
         this.shadowRoot.appendChild(el);
-        setTimeout(() => el.remove(), 3000);
-      }, i * 100);
+        setTimeout(() => el.remove(), 2800);
+      }, i * 80);
     }
   }
 
@@ -1344,54 +1562,8 @@ class GhostChat {
     this.chatBody.scrollTop = this.chatBody.scrollHeight;
   }
 
-  updateOnlineUsers(usersArray) {
-    const container = this.shadowRoot.getElementById('floating-users-container');
-    if (!container) return;
-
-    container.innerHTML = '';
-
-    // Add local user to the list for display
-    const localUser = {
-      userName: this.lastUserName || 'You',
-      userTheme: this.currentUserTheme,
-      userRole: this.currentUserRole,
-      userPhoto: this.currentUserPhoto
-    };
-    
-    // Sort so local user is always first (or last depending on flex-direction)
-    const allUsers = [localUser, ...usersArray];
-
-    allUsers.forEach(u => {
-      if (!u.userName) return;
-      
-      const wrapper = document.createElement('div');
-      wrapper.classList.add('floating-user');
-
-      const avatarWrap = document.createElement('div');
-      avatarWrap.classList.add('avatar-crown-wrapper');
-      if (u.userRole) avatarWrap.classList.add(`role-${u.userRole}`);
-
-      const img = document.createElement('img');
-      img.classList.add('floating-avatar');
-      img.src = u.userPhoto || 'https://www.gravatar.com/avatar/00000000000000000000000000000000?d=mp&f=y';
-      
-      if (u.userTheme === 'owner-dev' || u.userTheme === 'dev') img.classList.add('theme-owner-dev');
-      else if (u.userTheme === 'magic' || u.userTheme === 'rapunzel') img.classList.add('theme-magic');
-      else if (u.userTheme === 'bts') img.classList.add('theme-bts');
-      
-      avatarWrap.appendChild(img);
-      
-      const nameTag = document.createElement('div');
-      nameTag.classList.add('floating-name');
-      
-      let title = u.userName;
-      if (u.userRole === 'owner' && (u.userTheme === 'dev' || u.userTheme === 'owner-dev')) title = 'Developer & Co Owner';
-      nameTag.textContent = title;
-
-      wrapper.appendChild(avatarWrap);
-      wrapper.appendChild(nameTag);
-      container.appendChild(wrapper);
-    });
+  updateOnlineUsers(userNames) {
+    // Active user bar removed from template
   }
 }
 

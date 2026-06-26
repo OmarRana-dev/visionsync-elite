@@ -18,6 +18,7 @@ const PORT = process.env.PORT || 3000;
 
 // Room structure: { roomId: { users: { socketId: { userName } }, state: { currentTime, isPlaying, lastUpdated } } }
 const rooms = {};
+const roomCleanupTimers = {};
 
 io.on('connection', (socket) => {
   console.log('User connected:', socket.id);
@@ -35,7 +36,7 @@ io.on('connection', (socket) => {
     }
 
     socket.join(roomId);
-    
+
     // Cancel cleanup timer if it exists
     if (roomCleanupTimers[roomId]) {
       clearTimeout(roomCleanupTimers[roomId]);
@@ -49,12 +50,13 @@ io.on('connection', (socket) => {
         state: { currentTime: 0, isPlaying: false, lastUpdated: Date.now() },
         hostName: userName,
         hostSessionId: sessionId,
+        hostPhoto: options.hostPhoto || '',
         movieUrl: options.movieUrl || ''
       };
     } else if (options.movieUrl) {
       rooms[roomId].movieUrl = options.movieUrl;
     }
-    
+
     // IF SESSION ALREADY EXISTS: Clean up the old socket connection immediately
     if (rooms[roomId].users[sessionId]) {
       const oldSocketId = rooms[roomId].users[sessionId].socketId;
@@ -65,20 +67,16 @@ io.on('connection', (socket) => {
 
     // Auto-restore host if sessionId matches
     if (rooms[roomId].hostSessionId === sessionId) {
-       rooms[roomId].hostName = userName; // Update name if changed
+      rooms[roomId].hostName = userName; // Update name if changed
     }
 
     // Store user by sessionId to persist across reconnects
-    rooms[roomId].users[sessionId] = { 
-      userName, 
-      userEmail: options.userEmail,
-      userTheme: options.userTheme,
-      userRole: options.userRole,
-      userPhoto: options.userPhoto,
+    rooms[roomId].users[sessionId] = {
+      userName,
       socketId: socket.id,
       lastSeen: Date.now()
     };
-    
+
     // Map socket to session for easy lookup on disconnect
     socket.sessionId = sessionId;
     socket.currentRoom = roomId;
@@ -90,21 +88,14 @@ io.on('connection', (socket) => {
     const existingUsers = {};
     Object.keys(rooms[roomId].users).forEach(sId => {
       if (sId !== sessionId) {
-        existingUsers[rooms[roomId].users[sId].socketId] = rooms[roomId].users[sId];
+        existingUsers[rooms[roomId].users[sId].socketId] = rooms[roomId].users[sId].userName;
       }
     });
     socket.emit('existing-users', existingUsers);
 
     // Notify others
-    socket.to(roomId).emit('user-joined', { 
-      socketId: socket.id, 
-      userName,
-      userEmail: options.userEmail,
-      userTheme: options.userTheme,
-      userRole: options.userRole,
-      userPhoto: options.userPhoto
-    });
-    
+    socket.to(roomId).emit('user-joined', { socketId: socket.id, userName });
+
     if (typeof callback === 'function') callback({ success: true });
     console.log(`${userName} joined ${roomId} (Session: ${sessionId})`);
   });
@@ -113,18 +104,18 @@ io.on('connection', (socket) => {
   socket.on('playback-sync', (data) => {
     const { roomId, type, time, isPlaying, playbackRate } = data;
     if (rooms[roomId]) {
-      rooms[roomId].state = { 
-        currentTime: time, 
-        isPlaying, 
+      rooms[roomId].state = {
+        currentTime: time,
+        isPlaying,
         playbackRate: playbackRate || rooms[roomId].state.playbackRate || 1,
         lastUpdated: Date.now(),
         serverTimestamp: Date.now() // Attach server time for sync calculation
       };
       // Relay with the server timestamp and sender ID (for "Waiting for..." notification)
-      socket.to(roomId).emit('playback-sync', { 
-        ...data, 
+      socket.to(roomId).emit('playback-sync', {
+        ...data,
         serverTimestamp: Date.now(),
-        socketId: socket.id 
+        socketId: socket.id
       });
     }
   });
@@ -153,6 +144,12 @@ io.on('connection', (socket) => {
     socket.to(roomId).emit('delete-message', data);
   });
 
+  // TYPING STATUS RELAY
+  socket.on('typing-status', (data) => {
+    const { roomId } = data;
+    socket.to(roomId).emit('typing-status', { ...data, socketId: socket.id });
+  });
+
   // FETCH ACTIVE ROOMS
   socket.on('get-active-rooms', (callback) => {
     const activeRooms = [];
@@ -160,8 +157,8 @@ io.on('connection', (socket) => {
       const room = rooms[roomId];
       const userCount = Object.keys(room.users).length;
       if (userCount > 0) {
-        activeRooms.push({ 
-          id: roomId, 
+        activeRooms.push({
+          id: roomId,
           users: userCount,
           host: room.hostName || 'Anonymous',
           movieUrl: room.movieUrl
@@ -171,32 +168,32 @@ io.on('connection', (socket) => {
     if (typeof callback === 'function') callback(activeRooms);
   });
 
-  const roomCleanupTimers = {};
+
 
   const handleUserLeave = (roomId) => {
     const sessionId = socket.sessionId;
     if (rooms[roomId] && rooms[roomId].users[sessionId]) {
       const userName = rooms[roomId].users[sessionId].userName;
-      
+
       // Ensure we only delete if this is the ACTIVE socket for this session
       const currentUser = rooms[roomId].users[sessionId];
       if (currentUser.socketId === socket.id) {
-         delete rooms[roomId].users[sessionId];
-         socket.to(roomId).emit('user-left', { socketId: socket.id, userName });
-         console.log(`${userName} left ${roomId}`);
-         
-         // ROOM PERSISTENCE: If room is empty, don't delete immediately. 
-         // Wait 5 minutes to allow for host/users to reconnect.
-         if (Object.keys(rooms[roomId].users).length === 0) {
-           console.log(`Room ${roomId} is empty. Starting 5-minute cleanup timer.`);
-           roomCleanupTimers[roomId] = setTimeout(() => {
-             if (rooms[roomId] && Object.keys(rooms[roomId].users).length === 0) {
-               delete rooms[roomId];
-               delete roomCleanupTimers[roomId];
-               console.log(`Room ${roomId} deleted after 5 minutes of inactivity.`);
-             }
-           }, 5 * 60 * 1000); // 5 minutes
-         }
+        delete rooms[roomId].users[sessionId];
+        socket.to(roomId).emit('user-left', { socketId: socket.id, userName });
+        console.log(`${userName} left ${roomId}`);
+
+        // ROOM PERSISTENCE: If room is empty, don't delete immediately. 
+        // Wait 5 minutes to allow for host/users to reconnect.
+        if (Object.keys(rooms[roomId].users).length === 0) {
+          console.log(`Room ${roomId} is empty. Starting 5-minute cleanup timer.`);
+          roomCleanupTimers[roomId] = setTimeout(() => {
+            if (rooms[roomId] && Object.keys(rooms[roomId].users).length === 0) {
+              delete rooms[roomId];
+              delete roomCleanupTimers[roomId];
+              console.log(`Room ${roomId} deleted after 5 minutes of inactivity.`);
+            }
+          }, 5 * 60 * 1000); // 5 minutes
+        }
       }
     }
   };

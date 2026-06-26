@@ -6,7 +6,7 @@ class SyncEngine {
     this.currentRoomId = null;
     this.currentUserName = null;
     this.isRemoteSyncing = false;
-    this.peerData = {};
+    this.peerNames = {};
     this.hasJoinedOnce = false;
     this.pausedByRemoteBuffer = false; // Track if we were paused by a buffer lock
     this.sessionId = null;
@@ -29,8 +29,7 @@ class SyncEngine {
 
     chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       if (message.type === 'JOIN_ROOM') {
-        const { roomId, userName, isCreate, movieUrl, userEmail, userTheme, userRole, userPhoto } = message;
-        this.joinRoom(roomId, userName, isCreate, movieUrl, userEmail, userTheme, userRole, userPhoto, sendResponse);
+        this.joinRoom(message.roomId, message.userName, message.isCreate, message.movieUrl, sendResponse);
         return true;
       } else if (message.type === 'GET_STATUS') {
         sendResponse({
@@ -105,20 +104,20 @@ class SyncEngine {
       this.callChat('setSocketId', this.socket.id);
       if (this.currentRoomId && this.hasJoinedOnce) {
         // RECOVERY LOGIC: Use sessionId and handle errors
-        this.socket.emit('join-room', this.currentRoomId, this.currentUserName, { 
-          isCreate: this.isHost, 
-          sessionId: this.sessionId 
+        this.socket.emit('join-room', this.currentRoomId, this.currentUserName, {
+          isCreate: this.isHost,
+          sessionId: this.sessionId
         }, (response) => {
-           if (response && response.success) {
-             this.callChat('showNotification', 'Connection Restored! ⚡');
-           } else if (response && response.error === 'Room does not exist!' && this.isHost) {
-             // If I was the host, re-create it silently
-             this.socket.emit('join-room', this.currentRoomId, this.currentUserName, { 
-               isCreate: true, 
-               sessionId: this.sessionId 
-             });
-             this.callChat('showNotification', 'Room Restored! 🏰');
-           }
+          if (response && response.success) {
+            this.callChat('showNotification', 'Connection Restored! ⚡');
+          } else if (response && response.error === 'Room does not exist!' && this.isHost) {
+            // If I was the host, re-create it silently
+            this.socket.emit('join-room', this.currentRoomId, this.currentUserName, {
+              isCreate: true,
+              sessionId: this.sessionId
+            });
+            this.callChat('showNotification', 'Room Restored! 🏰');
+          }
         });
       }
     });
@@ -136,7 +135,7 @@ class SyncEngine {
 
     this.socket.on('existing-users', (users) => {
       console.log('[VisionSync] Existing users received:', users);
-      Object.assign(this.peerData, users);
+      Object.assign(this.peerNames, users);
       this.updateChatUserList();
     });
 
@@ -146,15 +145,15 @@ class SyncEngine {
         // STRONG FIX: If we are the host, don't let the server's initial empty state (0:00) reset our ongoing movie!
         if (this.isHost && state.currentTime === 0 && !state.isPlaying) {
           console.log('[VisionSync] Host protecting local playback state, broadcasting instead.');
-          this.broadcast({ 
-            type: this.videoElement.paused ? 'pause' : 'play', 
-            time: this.videoElement.currentTime 
+          this.broadcast({
+            type: this.videoElement.paused ? 'pause' : 'play',
+            time: this.videoElement.currentTime
           });
           return;
         }
 
         this.isRemoteSyncing = true;
-        
+
         // Only seek if the time difference is significant, prevents infinite buffering in MSE players
         if (Math.abs(this.videoElement.currentTime - state.currentTime) > 1.0) {
           if (this.videoElement.readyState >= 1) {
@@ -169,7 +168,7 @@ class SyncEngine {
         }
 
         if (state.isPlaying) {
-          this.videoElement.play().catch(() => {});
+          this.videoElement.play().catch(() => { });
         } else {
           this.videoElement.pause();
         }
@@ -179,18 +178,18 @@ class SyncEngine {
 
     this.socket.on('playback-sync', (data) => {
       if (!this.videoElement || this.isRemoteSyncing) return;
-      
+
       this.isRemoteSyncing = true;
-      
+
       // LATENCY COMPENSATION: Calculate how long the message took to arrive
       // We use the host's timestamp if available, otherwise server's
       const messageTime = data.hostTime || data.serverTimestamp || Date.now();
       const latencySeconds = Math.max(0, (Date.now() - messageTime) / 1000);
-      
+
       // Compensate: If movie was playing, it advanced by 'latencySeconds' during travel
       const targetTime = data.time + (data.isPlaying ? latencySeconds : 0);
       const timeDiff = Math.abs(this.videoElement.currentTime - targetTime);
-      
+
       console.log(`[VisionSync] Sync Event: ${data.type} (Latency: ${Math.round(latencySeconds * 1000)}ms)`);
 
       this.isApplyingNetworkState = true;
@@ -199,26 +198,26 @@ class SyncEngine {
         if (!this.videoElement.paused) this.videoElement.pause();
         if (data.type === 'waiting') {
           this.pausedByRemoteBuffer = true;
-          this.callChat('showNotification', `Waiting for ${this.peerData[data.socketId]?.userName || 'someone'}... ⏳`);
+          this.callChat('showNotification', `Waiting for ${this.peerNames[data.socketId] || 'someone'}... ⏳`);
         }
         if (data.type === 'pause') {
           if (Math.abs(this.videoElement.currentTime - data.time) > 0.5) {
             this.videoElement.currentTime = data.time;
           }
           this.pausedByRemoteBuffer = false;
-          this.callChat('showNotification', `Paused by ${this.peerData[data.socketId]?.userName || 'someone'}`);
+          this.callChat('showNotification', `Paused by ${this.peerNames[data.socketId] || 'someone'}`);
         }
       } else if (data.type === 'play' || data.type === 'playing') {
         const wasWaiting = this.pausedByRemoteBuffer;
         this.pausedByRemoteBuffer = false;
-        
+
         // DRIFT CORRECTION: Instead of snapping, we "catch up" if the drift is small
         if (timeDiff > 0.3 && timeDiff < 1.5) {
           // If we are behind, speed up slightly. If ahead, slow down.
           const driftRate = targetTime > this.videoElement.currentTime ? 1.05 : 0.95;
           this.videoElement.playbackRate = (data.playbackRate || 1) * driftRate;
           console.log(`[VisionSync] Smoothing drift: Adjusting rate to ${this.videoElement.playbackRate.toFixed(2)}`);
-          
+
           // Reset to normal rate after 1 second
           setTimeout(() => {
             if (this.videoElement) this.videoElement.playbackRate = data.playbackRate || 1;
@@ -229,18 +228,18 @@ class SyncEngine {
         }
 
         if (this.videoElement.paused) {
-          this.videoElement.play().catch(() => {});
+          this.videoElement.play().catch(() => { });
         }
-        
+
         if (wasWaiting) {
           this.callChat('showNotification', 'Resuming... ▶️');
         } else if (data.type === 'play') {
-          this.callChat('showNotification', `Playing by ${this.peerData[data.socketId]?.userName || 'someone'}`);
+          this.callChat('showNotification', `Playing by ${this.peerNames[data.socketId] || 'someone'}`);
         }
       } else if (data.type === 'seek' || timeDiff > this.syncThreshold) {
         this.videoElement.currentTime = targetTime;
         if (data.type === 'seek') {
-          this.callChat('showNotification', `Seeking by ${this.peerData[data.socketId]?.userName || 'someone'}`);
+          this.callChat('showNotification', `Seeking by ${this.peerNames[data.socketId] || 'someone'}`);
         }
       }
 
@@ -251,7 +250,7 @@ class SyncEngine {
       if (data.playbackRate && this.videoElement.playbackRate !== data.playbackRate) {
         this.videoElement.playbackRate = data.playbackRate;
       }
-      
+
       setTimeout(() => { this.isRemoteSyncing = false; }, 300);
     });
 
@@ -274,16 +273,23 @@ class SyncEngine {
       this.callChat('triggerEmojiBurst', data.emoji);
     });
 
-    this.socket.on('user-joined', (userData) => {
-      this.peerData[userData.socketId] = userData;
-      this.callChat('addSystemMessage', `${userData.userName} joined`);
+    this.socket.on('user-joined', ({ socketId, userName }) => {
+      this.peerNames[socketId] = userName;
+      this.callChat('addSystemMessage', `${userName} joined`);
       this.updateChatUserList();
     });
 
     this.socket.on('user-left', ({ socketId, userName }) => {
-      delete this.peerData[socketId];
+      delete this.peerNames[socketId];
       this.callChat('addSystemMessage', `${userName} left`);
       this.updateChatUserList();
+    });
+
+    // TYPING INDICATOR: Relay remote peer typing status to UI
+    this.socket.on('typing-status', (data) => {
+      if (data.socketId !== this.socket.id) {
+        this.callChat('showTypingIndicator', data.senderName, data.isTyping);
+      }
     });
   }
 
@@ -298,6 +304,12 @@ class SyncEngine {
       this.socket.emit('message-reaction', { roomId: this.currentRoomId, ...data });
     } else if (data.type === 'DELETE_MESSAGE') {
       this.socket.emit('delete-message', { roomId: this.currentRoomId, msgId: data.msgId });
+    } else if (data.type === 'TYPING') {
+      this.socket.emit('typing-status', {
+        roomId: this.currentRoomId,
+        senderName: data.senderName,
+        isTyping: data.isTyping
+      });
     } else if (['play', 'pause', 'seek', 'waiting', 'playing', 'ratechange'].includes(data.type)) {
       this.socket.emit('playback-sync', {
         roomId: this.currentRoomId,
@@ -310,25 +322,34 @@ class SyncEngine {
     }
   }
 
-  joinRoom(roomId, userName, isCreate, movieUrl, userEmail, userTheme, userRole, userPhoto, callback) {
+  joinRoom(roomId, userName, isCreate, movieUrl, callback) {
     this.currentRoomId = roomId;
     this.currentUserName = userName;
     this.isHost = isCreate;
-    
-    const options = { isCreate, sessionId: this.sessionId, movieUrl, userEmail, userTheme, userRole, userPhoto };
-    this.socket.emit('join-room', roomId, userName, options, (response) => {
-      if (response && response.error) {
-        // If room doesn't exist, don't show UI
-        this.currentRoomId = null;
-        if (callback) callback(response);
-      } else {
-        // Success: UI TRIGGER
-        this.hasJoinedOnce = true;
-        this.callChat('setRoomInfo', roomId, userName);
-        this.callChat('addSystemMessage', `${userName} joined`);
-        this.findVideoElement();
-        if (callback) callback({ success: true });
-      }
+
+    // Retrieve hostPhoto from storage and include in join payload
+    chrome.storage.local.get(['vsUser'], (res) => {
+      const hostPhoto = res.vsUser?.photo || '';
+
+      this.socket.emit('join-room', roomId, userName, {
+        isCreate,
+        sessionId: this.sessionId,
+        movieUrl,
+        hostPhoto
+      }, (response) => {
+        if (response && response.error) {
+          // If room doesn't exist, don't show UI
+          this.currentRoomId = null;
+          if (callback) callback(response);
+        } else {
+          // Success: UI TRIGGER
+          this.hasJoinedOnce = true;
+          this.callChat('setRoomInfo', roomId, userName);
+          this.callChat('addSystemMessage', `${userName} joined`);
+          this.findVideoElement();
+          if (callback) callback({ success: true });
+        }
+      });
     });
   }
 
@@ -344,7 +365,7 @@ class SyncEngine {
     // PREVENT DUPLICATES: Use a Set to ensure unique names in the UI
     const uniqueNames = new Set(Object.values(this.peerNames));
     const names = Array.from(uniqueNames);
-    
+
     // Include yourself
     names.unshift(this.currentUserName + " (You)");
     this.callChat('updateOnlineUsers', names);

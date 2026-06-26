@@ -3,67 +3,67 @@
 document.addEventListener('DOMContentLoaded', () => {
 
   // ── DOM References ─────────────────────────────────────
-  const loginScreen       = document.getElementById('loginScreen');
-  const loginStatusMsg    = document.getElementById('loginStatusMsg');
-  const googleSignInBtn   = document.getElementById('googleSignInBtn');
-  const userProfileStrip  = document.getElementById('userProfileStrip');
-  const userAvatar        = document.getElementById('userAvatar');
-  const userNameDisplay   = document.getElementById('userNameDisplay');
-  const userEmailDisplay  = document.getElementById('userEmailDisplay');
-  const signOutBtn        = document.getElementById('signOutBtn');
+  const loginScreen = document.getElementById('loginScreen');
+  const loginStatusMsg = document.getElementById('loginStatusMsg');
+  const googleSignInBtn = document.getElementById('googleSignInBtn');
+  const userProfileStrip = document.getElementById('userProfileStrip');
+  const userAvatar = document.getElementById('userAvatar');
+  const userNameDisplay = document.getElementById('userNameDisplay');
+  const userEmailDisplay = document.getElementById('userEmailDisplay');
+  const signOutBtn = document.getElementById('signOutBtn');
 
-  const redeemSection        = document.getElementById('redeemSection');
-  const redeemToggleBtn      = document.getElementById('redeemToggleBtn');
-  const redeemToggleIcon     = document.getElementById('redeemToggleIcon');
+  const redeemSection = document.getElementById('redeemSection');
+  const redeemToggleBtn = document.getElementById('redeemToggleBtn');
+  const redeemToggleIcon = document.getElementById('redeemToggleIcon');
   const redeemInputContainer = document.getElementById('redeemInputContainer');
-  const redeemInput          = document.getElementById('redeemInput');
-  const redeemActionBtn      = document.getElementById('redeemActionBtn');
-  const redeemStatusMsg      = document.getElementById('redeemStatusMsg');
+  const redeemInput = document.getElementById('redeemInput');
+  const redeemActionBtn = document.getElementById('redeemActionBtn');
+  const redeemStatusMsg = document.getElementById('redeemStatusMsg');
 
-  const launchOverlay     = document.getElementById('launchOverlay');
-  const launchBtn         = document.getElementById('launchBtn');
-  const lobbyBtn          = document.getElementById('lobbyBtn');
-  const mainApp           = document.getElementById('mainApp');
-  const statusMsg         = document.getElementById('statusMsg');
+  const launchOverlay = document.getElementById('launchOverlay');
+  const launchBtn = document.getElementById('launchBtn');
+  const lobbyBtn = document.getElementById('lobbyBtn');
+  const mainApp = document.getElementById('mainApp');
+  const statusMsg = document.getElementById('statusMsg');
 
-  const usernameInput     = document.getElementById('usernameInput');
-  const tabs              = document.querySelectorAll('.tab');
-  const tabContents       = document.querySelectorAll('.tab-content');
+  const usernameInput = document.getElementById('usernameInput');
+  const tabs = document.querySelectorAll('.tab');
+  const tabContents = document.querySelectorAll('.tab-content');
 
-  const generateBtn           = document.getElementById('generateBtn');
-  const createResult          = document.getElementById('createResult');
-  const generatedCodeDisplay  = document.getElementById('generatedCodeDisplay');
-  const copyBtn               = document.getElementById('copyBtn');
-  let currentGeneratedCode    = '';
+  const generateBtn = document.getElementById('generateBtn');
+  const createResult = document.getElementById('createResult');
+  const generatedCodeDisplay = document.getElementById('generatedCodeDisplay');
+  const copyBtn = document.getElementById('copyBtn');
+  let currentGeneratedCode = '';
 
-  const roomIdInput       = document.getElementById('roomIdInput');
-  const joinBtn           = document.getElementById('joinBtn');
-  const activeRoomsSection= document.getElementById('activeRoomsSection');
-  const activeRoomsList   = document.getElementById('activeRoomsList');
+  const roomIdInput = document.getElementById('roomIdInput');
+  const joinBtn = document.getElementById('joinBtn');
+  const activeRoomsSection = document.getElementById('activeRoomsSection');
+  const activeRoomsList = document.getElementById('activeRoomsList');
 
-  const connectionControls= document.getElementById('connectionControls');
-  const connectedView     = document.getElementById('connectedView');
-  const currentRoomLink   = document.getElementById('currentRoomLink');
-  const copyActiveBtn     = document.getElementById('copyActiveBtn');
-  const leaveBtn          = document.getElementById('leaveBtn');
-  const nameInputWrapper  = document.getElementById('nameInputWrapper');
+  const connectionControls = document.getElementById('connectionControls');
+  const connectedView = document.getElementById('connectedView');
+  const currentRoomLink = document.getElementById('currentRoomLink');
+  const copyActiveBtn = document.getElementById('copyActiveBtn');
+  const leaveBtn = document.getElementById('leaveBtn');
+  const nameInputWrapper = document.getElementById('nameInputWrapper');
 
   // ── Auth UI helpers ────────────────────────────────────
   function showLoginScreen() {
-    loginScreen.style.display       = 'flex';
-    userProfileStrip.style.display  = 'none';
-    redeemSection.style.display     = 'none';
-    launchOverlay.style.display     = 'none';
-    mainApp.style.display           = 'none';
-    statusMsg.textContent           = '';
+    loginScreen.style.display = 'flex';
+    userProfileStrip.style.display = 'none';
+    redeemSection.style.display = 'none';
+    launchOverlay.style.display = 'none';
+    mainApp.style.display = 'none';
+    statusMsg.textContent = '';
   }
 
   function showUserProfile(user) {
-    loginScreen.style.display       = 'none';
-    userProfileStrip.style.display  = 'flex';
-    redeemSection.style.display     = 'flex';
+    loginScreen.style.display = 'none';
+    userProfileStrip.style.display = 'flex';
+    redeemSection.style.display = 'flex';
     userAvatar.src = user.photo || 'icons/icon48.png';
-    userNameDisplay.textContent  = user.name || 'User';
+    userNameDisplay.textContent = user.name || 'User';
     userEmailDisplay.textContent = user.email || '';
     // Pre-fill display name with Google name
     usernameInput.value = user.name || '';
@@ -81,18 +81,67 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 
   // ── Auth Listeners ─────────────────────────────────────
+  let authPollInterval = null;
+
+  function stopAuthPolling() {
+    if (authPollInterval) {
+      clearInterval(authPollInterval);
+      authPollInterval = null;
+    }
+  }
+
+  function startAuthPolling() {
+    stopAuthPolling();
+    let attempts = 0;
+    const MAX_ATTEMPTS = 360; // poll for up to 3 minutes (360 * 500ms)
+
+    authPollInterval = setInterval(() => {
+      attempts++;
+      if (attempts > MAX_ATTEMPTS) {
+        stopAuthPolling();
+        loginStatusMsg.textContent = 'Sign-in timed out. Please try again.';
+        googleSignInBtn.disabled = false;
+        return;
+      }
+
+      chrome.storage.local.get(['vsUser'], (result) => {
+        if (result.vsUser) {
+          stopAuthPolling();
+          showUserProfile(result.vsUser);
+          checkTabAndShowApp();
+        }
+      });
+    }, 500);
+  }
+
+  // Listen for storage changes — catches auth completion if popup stays open
+  chrome.storage.onChanged.addListener((changes, area) => {
+    if (area === 'local' && changes.vsUser && changes.vsUser.newValue) {
+      stopAuthPolling();
+      showUserProfile(changes.vsUser.newValue);
+      checkTabAndShowApp();
+    }
+  });
+
   googleSignInBtn.addEventListener('click', () => {
     googleSignInBtn.disabled = true;
-    loginStatusMsg.textContent = 'Opening Google Sign-In... Please complete in the new window.';
+    loginStatusMsg.innerHTML = 'Google sign-in window opened.<br><span style="font-size:11px;color:#888;">Complete sign-in there, then reopen this extension if needed.</span>';
+
+    // Start polling storage — works even if the popup closes and reopens
+    startAuthPolling();
+
+    // Also fire the background message (response may never arrive if popup closes — that is OK)
     chrome.runtime.sendMessage({ type: 'LOGIN_WITH_GOOGLE' }, (response) => {
       if (chrome.runtime.lastError) {
-        // The popup likely closed because the Google window stole focus. This is normal.
+        // Popup closed while Google window was open — polling will catch the result on reopen.
         return;
       }
       if (response && response.status === 'success') {
+        stopAuthPolling();
         showUserProfile(response.user);
         checkTabAndShowApp();
       } else if (response && response.status === 'error') {
+        stopAuthPolling();
         loginStatusMsg.textContent = `Sign-in failed: ${response.error}`;
         console.error('[VisionSync] Auth error:', response.error);
         googleSignInBtn.disabled = false;
@@ -138,10 +187,10 @@ document.addEventListener('DOMContentLoaded', () => {
       // We'll just fetch the document from 'codes' collection directly
       const FIRESTORE_BASE = 'https://firestore.googleapis.com/v1/projects/visionsync-elite/databases/(default)/documents';
       const apiKeyQuery = '?key=API_KEY_HERE'; // We need the actual config, wait, config is in auth.js!
-      
+
       const codeUrl = `${FIRESTORE_BASE}/codes/${code}?key=${FIREBASE_CONFIG.apiKey}`;
       const codeRes = await fetch(codeUrl);
-      
+
       if (!codeRes.ok) {
         if (codeRes.status === 404) throw new Error('Invalid code. Does not exist.');
         throw new Error('Failed to verify code.');
@@ -192,7 +241,7 @@ document.addEventListener('DOMContentLoaded', () => {
       redeemStatusMsg.style.color = '#25d366';
       redeemStatusMsg.textContent = `Success! ${themeValue} theme unlocked! 🎉`;
       redeemInput.value = '';
-      
+
     } catch (err) {
       redeemStatusMsg.style.color = '#ff2a6d';
       redeemStatusMsg.textContent = err.message;
@@ -215,8 +264,8 @@ document.addEventListener('DOMContentLoaded', () => {
   // ── Popup State Helpers ────────────────────────────────
   function showMainApp(msg, status = null) {
     launchOverlay.style.display = 'none';
-    mainApp.style.display       = 'flex';
-    statusMsg.textContent       = msg;
+    mainApp.style.display = 'flex';
+    statusMsg.textContent = msg;
     if (status && status.connected) {
       showConnectedView(status.roomId);
     } else {
@@ -228,16 +277,16 @@ document.addEventListener('DOMContentLoaded', () => {
 
   function showConnectedView(roomId) {
     connectionControls.style.display = 'none';
-    nameInputWrapper.style.display   = 'none';
-    connectedView.style.display      = 'flex';
-    currentRoomLink.textContent      = roomId;
-    statusMsg.textContent            = `Connected to ${roomId}`;
+    nameInputWrapper.style.display = 'none';
+    connectedView.style.display = 'flex';
+    currentRoomLink.textContent = roomId;
+    statusMsg.textContent = `Connected to ${roomId}`;
   }
 
   function showDisconnectedView() {
     connectionControls.style.display = 'block';
-    nameInputWrapper.style.display   = 'none'; // name comes from Google
-    connectedView.style.display      = 'none';
+    nameInputWrapper.style.display = 'none'; // name comes from Google
+    connectedView.style.display = 'none';
     createResult.classList.remove('active');
     const activeTab = document.querySelector('.tab.active');
     if (activeTab && activeTab.dataset.target === 'join') fetchActiveRooms();
@@ -253,8 +302,8 @@ document.addEventListener('DOMContentLoaded', () => {
         if (res.isAutoJoining && res.autoJoinTabId === activeTabId) {
           // Block manual interaction on this tab during auto-join
           launchOverlay.style.display = 'none';
-          mainApp.style.display       = 'none';
-          statusMsg.textContent       = 'Auto-joining watch party... Please wait.';
+          mainApp.style.display = 'none';
+          statusMsg.textContent = 'Auto-joining watch party... Please wait.';
           return;
         }
 
@@ -263,8 +312,8 @@ document.addEventListener('DOMContentLoaded', () => {
             showMainApp('VisionSync Active!', response);
           } else {
             launchOverlay.style.display = 'flex';
-            mainApp.style.display       = 'none';
-            statusMsg.textContent       = 'Ready to launch.';
+            mainApp.style.display = 'none';
+            statusMsg.textContent = 'Ready to launch.';
           }
         });
       });
@@ -334,36 +383,24 @@ document.addEventListener('DOMContentLoaded', () => {
   async function triggerJoinRoom(roomId, isCreate = false) {
     const userName = usernameInput.value.trim();
     if (!userName) { statusMsg.textContent = 'No display name found.'; return; }
-    if (!roomId)   { statusMsg.textContent = 'Invalid Room Link.'; return; }
+    if (!roomId) { statusMsg.textContent = 'Invalid Room Link.'; return; }
     statusMsg.textContent = 'Joining room...';
 
     const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
     if (tab) {
-      // 1. Fetch user to ensure we have their token/GoogleID
-      chrome.storage.local.get(['vsUser'], (res) => {
-        const user = res.vsUser || {};
-        chrome.tabs.sendMessage(tab.id, {
-          type: 'JOIN_ROOM', 
-          roomId, 
-          userName, 
-          isCreate, 
-          movieUrl: tab.url,
-          userEmail: user.email,
-          userTheme: user.theme,
-          userRole: user.role,
-          userPhoto: user.photo
-        }, (response) => {
-          if (chrome.runtime.lastError || !response) {
-            statusMsg.textContent = 'Error: Launch the extension first.';
-            return;
-          }
-          if (response.error) {
-            statusMsg.textContent = response.error;
-          } else {
-            showConnectedView(roomId);
-            chrome.storage.local.set({ userName });
-          }
-        });
+      chrome.tabs.sendMessage(tab.id, {
+        type: 'JOIN_ROOM', roomId, userName, isCreate, movieUrl: tab.url
+      }, (response) => {
+        if (chrome.runtime.lastError || !response) {
+          statusMsg.textContent = 'Error: Launch the extension first.';
+          return;
+        }
+        if (response.error) {
+          statusMsg.textContent = response.error;
+        } else {
+          showConnectedView(roomId);
+          chrome.storage.local.set({ userName });
+        }
       });
     }
   }
@@ -413,8 +450,10 @@ document.addEventListener('DOMContentLoaded', () => {
   });
 
   // ── Startup: Auth Check → Show Correct Screen ──────────
+  // On every popup open, immediately check if a sign-in completed while popup was closed
   window.vsAuth.getCurrentUser().then((user) => {
     if (user) {
+      stopAuthPolling();
       showUserProfile(user);
       checkTabAndShowApp();
     } else {

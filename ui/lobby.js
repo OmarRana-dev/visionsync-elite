@@ -43,7 +43,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
   function renderRooms(rooms) {
     roomsGrid.innerHTML = '';
-    
+
     rooms.forEach(room => {
       const card = document.createElement('div');
       card.className = 'room-card';

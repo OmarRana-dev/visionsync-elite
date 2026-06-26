@@ -1,5 +1,6 @@
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -16,7 +17,7 @@
       display: flex;
       flex-direction: column;
       align-items: center;
-      background-image: 
+      background-image:
         radial-gradient(circle at 15% 50%, rgba(229, 46, 113, 0.08), transparent 25%),
         radial-gradient(circle at 85% 30%, rgba(255, 138, 0, 0.08), transparent 25%);
     }
@@ -119,7 +120,10 @@
     .room-card::before {
       content: '';
       position: absolute;
-      top: 0; left: 0; right: 0; height: 3px;
+      top: 0;
+      left: 0;
+      right: 0;
+      height: 3px;
       background: linear-gradient(90deg, #ff8a00, #e52e71);
       opacity: 0;
       transition: opacity 0.3s;
@@ -181,7 +185,8 @@
     }
 
     .users-badge .dot {
-      width: 8px; height: 8px;
+      width: 8px;
+      height: 8px;
       background: #25d366;
       border-radius: 50%;
       box-shadow: 0 0 8px #25d366;
@@ -231,6 +236,7 @@
     }
   </style>
 </head>
+
 <body>
 
   <header>
@@ -251,4 +257,5 @@
 
   <script src="lobby.js"></script>
 </body>
+
 </html>

@@ -3,6 +3,7 @@
   "name": "VisionSync Elite",
   "version": "1.0",
   "description": "Premium synchronized movie watching extension with Zero-Latency Event-Driven P2P.",
+  "key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEA1HR80lyHS+zsVf9pLdaNsUIbLvTGNeYa74OrxWbjKd49QIM0a9ZUCDqFwJiEbl1IHRY5JYGNzPKoU/3c9ENCqQc6BXOtjgPs1LDH2EZjrTDi8yqdDzVrcVhbY6JGokhyfJm6b1yaQjuHM5Def+eNOYHBGsyOOSyCTSPEUsiQNIY1Zf6KrzC6gadKdhS6yNkP+8h5tGcbTn97mpZsIF/Y7fr+8Ulv+Nd9Skxs6CBsVgL+egta7bcok5p9nl3qvk689mmeVtWr5bTBANPJ+0OnGyCAQ93kGbgND8inUaFa0shpGZ3pdV/dV7Bh7NdF6lX/IeLewTREK+6amyna1h1HqQIDAQAB",
   "action": {
     "default_popup": "ui/popup.html",
     "default_icon": {
