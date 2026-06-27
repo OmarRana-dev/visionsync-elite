@@ -34,6 +34,8 @@ class GhostChat {
   init() {
     this.container = document.createElement('div');
     this.container.id = 'visionSync-ghost-container';
+    // Keep host always in DOM but invisible at zero size; inner #vs-root controls visibility
+    this.container.style.cssText = 'position:fixed;top:0;left:0;width:0;height:0;pointer-events:none;z-index:2147483647;font-family:Inter,-apple-system,sans-serif;';
 
     // Inject into fullscreen element or body
     const attachTarget = document.fullscreenElement || document.body;
@@ -91,16 +93,16 @@ class GhostChat {
   render() {
     this.shadowRoot.innerHTML = `
       <style>
-        :host {
-          position: fixed;
-          top: 0;
-          left: 0;
-          z-index: 2147483647;
-          pointer-events: none;
+        /* #vs-root: inner visibility wrapper — hidden until setRoomInfo() is called */
+        #vs-root {
           display: none;
-          font-family: 'Inter', -apple-system, sans-serif;
+          position: fixed;
+          top: 0; left: 0;
+          width: 0; height: 0;
+          pointer-events: none;
+          z-index: 2147483647;
         }
-        :host(.active) {
+        #vs-root.active {
           display: block;
         }
 
@@ -126,6 +128,13 @@ class GhostChat {
           border: 1px solid rgba(255, 255, 255, 0.08);
           cursor: grab;
           user-select: none;
+        }
+        /* Dock hides when chat is open */
+        #visionSync-dock.hidden {
+          opacity: 0;
+          pointer-events: none;
+          transform: translateY(-50%) scale(0.8);
+          transition: opacity 0.25s, transform 0.25s;
         }
         #visionSync-dock:active {
           cursor: grabbing;
@@ -527,6 +536,36 @@ class GhostChat {
           background: rgba(255, 255, 255, 0.12);
         }
 
+        /* --- Chat controls bar (minimize + leave, inside chatbox) --- */
+        #chat-controls-bar {
+          display: flex;
+          align-items: center;
+          justify-content: flex-end;
+          gap: 8px;
+          padding: 4px 10px 0;
+          pointer-events: auto;
+        }
+        .chat-ctrl-btn {
+          display: flex;
+          align-items: center;
+          gap: 5px;
+          padding: 4px 10px;
+          border-radius: 12px;
+          font-size: 11px;
+          font-weight: 700;
+          cursor: pointer;
+          border: 1px solid rgba(255,255,255,0.12);
+          background: rgba(255,255,255,0.06);
+          color: rgba(255,255,255,0.7);
+          transition: all 0.2s;
+          pointer-events: auto;
+          user-select: none;
+        }
+        .chat-ctrl-btn:hover { background: rgba(255,255,255,0.14); color:#fff; }
+        .chat-ctrl-btn.leave { border-color:rgba(255,75,43,0.4); color:#ff6b55; }
+        .chat-ctrl-btn.leave:hover { background:rgba(255,75,43,0.2); }
+        .chat-ctrl-btn svg { width:12px; height:12px; }
+
         /* --- Full Emoji Picker Container --- */
         #emoji-picker-container {
           position: absolute;
@@ -544,6 +583,42 @@ class GhostChat {
           pointer-events: auto;
         }
         #emoji-picker-container.visible { display: flex; }
+        /* Pinned slots row at top of picker */
+        #picker-slots-row {
+          display: none;
+          gap: 8px;
+          align-items: center;
+          padding: 8px 12px;
+          border-bottom: 1px solid rgba(255,255,255,0.08);
+          flex-wrap: nowrap;
+          overflow-x: auto;
+        }
+        #picker-slots-row.visible { display: flex; }
+        .picker-slot {
+          font-size: 22px;
+          cursor: pointer;
+          flex-shrink: 0;
+          border-radius: 8px;
+          padding: 3px 5px;
+          transition: transform 0.15s, background 0.15s;
+          position: relative;
+        }
+        .picker-slot:hover { background: rgba(255,255,255,0.1); transform: scale(1.2); }
+        .picker-slot.active-slot {
+          border: 1.5px solid #e52e71;
+          background: rgba(229,46,113,0.15);
+        }
+        .picker-slot-label {
+          position: absolute;
+          bottom: -2px;
+          right: 0;
+          font-size: 7px;
+          background: rgba(229,46,113,0.8);
+          color: #fff;
+          border-radius: 3px;
+          padding: 0 2px;
+          pointer-events: none;
+        }
         .picker-header {
           padding: 10px 14px;
           font-size: 11px;
@@ -616,10 +691,11 @@ class GhostChat {
         }
       </style>
 
-      <div id="visionSync-dock">
-        <div id="dock-drag-handle"></div>
+      <div id="vs-root">
+        <div id="visionSync-dock">
+          <div id="dock-drag-handle"></div>
 
-        <div class="dock-icon" id="copy-room-btn" title="Copy Room URL">
+          <div class="dock-icon" id="copy-room-btn" title="Copy Room URL">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"></path><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"></path></svg>
         </div>
         <div class="dock-icon muted" id="toggle-chat-btn" title="Toggle Chat">
@@ -635,6 +711,17 @@ class GhostChat {
       </div>
 
       <div id="chat-container">
+        <!-- Controls bar: minimize + leave (visible when dock is hidden) -->
+        <div id="chat-controls-bar">
+          <div class="chat-ctrl-btn" id="chat-minimize-btn" title="Minimize">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="5" y1="12" x2="19" y2="12"></line></svg>
+            Minimize
+          </div>
+          <div class="chat-ctrl-btn leave" id="chat-leave-btn" title="Leave Room">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"></path><polyline points="16 17 21 12 16 7"></polyline><line x1="21" y1="12" x2="9" y2="12"></line></svg>
+            Leave
+          </div>
+        </div>
         <div id="chat-body">
           <!-- Spacer at top allows flexing items to bottom while keeping scrolling working perfectly -->
           <div id="chat-body-spacer" style="margin-top: auto;"></div>
@@ -659,12 +746,6 @@ class GhostChat {
           <div id="reaction-bar"></div>
 
           <div id="input-row">
-            <div class="input-btn" id="customize-movie-btn" title="Customize Movie Reactions">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:16px;height:16px;">
-                <circle cx="12" cy="12" r="3"></circle>
-                <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"></path>
-              </svg>
-            </div>
             <input type="text" id="chat-input" placeholder="Type a message..." autocomplete="off">
             <button class="send-btn" id="send-chat-btn">Send</button>
           </div>
@@ -676,12 +757,16 @@ class GhostChat {
             <span id="picker-title">SELECT EMOJI</span>
             <span id="close-picker-btn" style="cursor:pointer;">✕</span>
           </div>
+          <!-- Pinned slots row shown when a reaction bar opens the picker -->
+          <div id="picker-slots-row"></div>
           <div class="picker-grid" id="picker-grid"></div>
         </div>
         <div id="chat-drag-handle"></div>
       </div>
+    </div>
     `;
 
+    this.vsRoot = this.shadowRoot.getElementById('vs-root');
     this.chatBody = this.shadowRoot.getElementById('chat-body');
     this.chatContainer = this.shadowRoot.getElementById('chat-container');
     this.unreadBadge = this.shadowRoot.getElementById('unread-badge');
@@ -914,12 +999,14 @@ class GhostChat {
     });
 
     if (this.currentUserGoogleId) {
-      const FIREBASE_CONFIG = {
-        apiKey: "AIzaSyBMLd0WLDelhXVXbZ-MZUlFo7nxt9pauQA",
-        projectId: "visionsync-elite",
-      };
+      // Use global FIREBASE_CONFIG injected via firebase-config.js
+      const { apiKey, projectId } = window.FIREBASE_CONFIG || {};
+      if (!apiKey || !projectId) {
+        console.warn('[VisionSync] Firebase config not available');
+        return;
+      }
       // PATCH call updating BOTH customization slots on profile
-      const url = `https://firestore.googleapis.com/v1/projects/${FIREBASE_CONFIG.projectId}/databases/(default)/documents/users/${this.currentUserGoogleId}?key=${FIREBASE_CONFIG.apiKey}&updateMask.fieldPaths=messageReactions&updateMask.fieldPaths=screenReactions`;
+      const url = `https://firestore.googleapis.com/v1/projects/${projectId}/databases/(default)/documents/users/${this.currentUserGoogleId}?key=${apiKey}&updateMask.fieldPaths=messageReactions&updateMask.fieldPaths=screenReactions`;
 
       fetch(url, {
         method: 'PATCH',
@@ -944,11 +1031,13 @@ class GhostChat {
 
   loadPreferences() {
     if (!this.currentUserGoogleId) return;
-    const FIREBASE_CONFIG = {
-      apiKey: "AIzaSyBMLd0WLDelhXVXbZ-MZUlFo7nxt9pauQA",
-      projectId: "visionsync-elite",
-    };
-    const url = `https://firestore.googleapis.com/v1/projects/${FIREBASE_CONFIG.projectId}/databases/(default)/documents/users/${this.currentUserGoogleId}?key=${FIREBASE_CONFIG.apiKey}`;
+    // Use global FIREBASE_CONFIG injected via firebase-config.js
+    const { apiKey, projectId } = window.FIREBASE_CONFIG || {};
+    if (!apiKey || !projectId) {
+      console.warn('[VisionSync] Firebase config not available');
+      return;
+    }
+    const url = `https://firestore.googleapis.com/v1/projects/${projectId}/databases/(default)/documents/users/${this.currentUserGoogleId}?key=${apiKey}`;
 
     fetch(url)
       .then(res => res.json())
@@ -1111,22 +1200,34 @@ class GhostChat {
       if (message.type === 'UI_CLEANUP') this.cleanup();
     });
 
+    const dock = this.shadowRoot.getElementById('visionSync-dock');
+    const chatMinimizeBtn = this.shadowRoot.getElementById('chat-minimize-btn');
+    const chatLeaveBtn = this.shadowRoot.getElementById('chat-leave-btn');
+
     toggleChatBtn.addEventListener('click', () => {
-      const isVisible = this.chatContainer.classList.toggle('visible');
+      this.chatContainer.classList.add('visible');
+      dock.classList.add('hidden');
+      this.clearUnreadBadge();
+      toggleChatBtn.classList.add('active');
+      toggleChatBtn.classList.remove('muted');
       const chatSvg = this.shadowRoot.getElementById('chat-svg');
-      if (isVisible) {
-        this.clearUnreadBadge();
-        toggleChatBtn.classList.add('active');
-        toggleChatBtn.classList.remove('muted');
-        chatSvg.innerHTML = `<path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path>`;
-      } else {
-        toggleChatBtn.classList.remove('active');
-        toggleChatBtn.classList.add('muted');
-        chatSvg.innerHTML = `
-          <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path>
-          <line x1="3" y1="3" x2="21" y2="21" stroke="rgba(255,255,255,0.4)" stroke-width="2.5"></line>
-        `;
-      }
+      chatSvg.innerHTML = `<path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path>`;
+    });
+
+    chatMinimizeBtn.addEventListener('click', () => {
+      this.chatContainer.classList.remove('visible');
+      dock.classList.remove('hidden');
+      toggleChatBtn.classList.remove('active');
+      toggleChatBtn.classList.add('muted');
+      const chatSvg = this.shadowRoot.getElementById('chat-svg');
+      chatSvg.innerHTML = `
+        <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path>
+        <line x1="3" y1="3" x2="21" y2="21" stroke="rgba(255,255,255,0.4)" stroke-width="2.5"></line>
+      `;
+    });
+
+    chatLeaveBtn.addEventListener('click', () => {
+      this.cleanup();
     });
 
     customizeMovieBtn.addEventListener('click', () => {
@@ -1158,7 +1259,7 @@ class GhostChat {
   }
 
   cleanup() {
-    this.container.classList.remove('active');
+    if (this.vsRoot) this.vsRoot.classList.remove('active');
     this.chatBody.innerHTML = '';
     this.clearUnreadBadge();
     this.chatContainer.classList.remove('visible');
@@ -1181,7 +1282,9 @@ class GhostChat {
   setRoomInfo(roomId, userName) {
     this.roomId = roomId;
     this.lastUserName = userName;
-    this.container.classList.add('active');
+
+    // Activate the inner visibility wrapper (100% reliable vs :host CSS)
+    if (this.vsRoot) this.vsRoot.classList.add('active');
 
     const dock = this.shadowRoot.getElementById('visionSync-dock');
     const isMagic = userName && userName.match(/abeera|jennie/i);
@@ -1567,5 +1670,23 @@ class GhostChat {
   }
 }
 
-// Global initialization
-window.visionSyncChat = new GhostChat();
+// Global initialization with error boundary
+(function initGhostChat() {
+  try {
+    window.visionSyncChat = new GhostChat();
+    console.log('[VisionSync Elite] GhostChat initialized successfully');
+  } catch (error) {
+    console.error('[VisionSync Elite] GhostChat initialization failed:', error);
+    // Report error to background for debugging
+    try {
+      chrome.runtime.sendMessage({
+        type: 'CONTENT_SCRIPT_ERROR',
+        script: 'ghost-chat.js',
+        error: error.message,
+        stack: error.stack
+      });
+    } catch (e) {
+      // Background might not be available
+    }
+  }
+})();
