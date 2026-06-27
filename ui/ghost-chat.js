@@ -34,8 +34,10 @@ class GhostChat {
   init() {
     this.container = document.createElement('div');
     this.container.id = 'visionSync-ghost-container';
-    // Keep host always in DOM but invisible at zero size; inner #vs-root controls visibility
-    this.container.style.cssText = 'position:fixed;top:0;left:0;width:0;height:0;pointer-events:none;z-index:2147483647;font-family:Inter,-apple-system,sans-serif;';
+    // IMPORTANT: NO position/z-index/transform on host container —
+    // those would create a stacking context that traps child position:fixed
+    // elements relative to this 0×0 div instead of the real viewport.
+    this.container.style.cssText = 'all:unset;';
 
     // Inject into fullscreen element or body
     const attachTarget = document.fullscreenElement || document.body;
@@ -93,21 +95,10 @@ class GhostChat {
   render() {
     this.shadowRoot.innerHTML = `
       <style>
-        /* #vs-root: inner visibility wrapper — hidden until setRoomInfo() is called */
-        #vs-root {
-          display: none;
-          position: fixed;
-          top: 0; left: 0;
-          width: 0; height: 0;
-          pointer-events: none;
-          z-index: 2147483647;
-        }
-        #vs-root.active {
-          display: block;
-        }
-
-        /* --- Floating Dock (Left side, vertical, draggable) --- */
+        /* Dock and chat are position:fixed relative to the REAL viewport.
+           They start hidden and are shown explicitly via setRoomInfo(). */
         #visionSync-dock {
+          display: none;
           position: fixed;
           right: 0px;
           top: 70%;
@@ -118,7 +109,6 @@ class GhostChat {
           backdrop-filter: blur(20px);
           -webkit-backdrop-filter: blur(20px);
           border-radius: 24px;
-          display: flex;
           flex-direction: column;
           align-items: center;
           gap: 20px;
@@ -128,13 +118,16 @@ class GhostChat {
           border: 1px solid rgba(255, 255, 255, 0.08);
           cursor: grab;
           user-select: none;
+          transition: opacity 0.25s, transform 0.25s;
+        }
+        #visionSync-dock.vs-active {
+          display: flex;
         }
         /* Dock hides when chat is open */
         #visionSync-dock.hidden {
           opacity: 0;
           pointer-events: none;
           transform: translateY(-50%) scale(0.8);
-          transition: opacity 0.25s, transform 0.25s;
         }
         #visionSync-dock:active {
           cursor: grabbing;
@@ -901,7 +894,7 @@ class GhostChat {
           this.msgReactionPickerTarget = null;
           const title = this.shadowRoot.getElementById('picker-title');
           title.textContent = 'SELECT EMOJI';
-          
+
           const bubble = this.shadowRoot.querySelector(`[data-msg-id="${targetMsgId}"]`);
           if (bubble) {
             const myId = this.localSocketId || 'local';
@@ -950,7 +943,7 @@ class GhostChat {
       if (this.movieCustomizeActive) {
         this.toggleMovieCustomizeMode();
       }
-      
+
       // Reset any active message reaction overlays to un-click the gear
       const activeOverlays = this.shadowRoot.querySelectorAll('.msg-reactions-picker-overlay');
       activeOverlays.forEach(overlay => {
@@ -1200,7 +1193,6 @@ class GhostChat {
       if (message.type === 'UI_CLEANUP') this.cleanup();
     });
 
-    const dock = this.shadowRoot.getElementById('visionSync-dock');
     const chatMinimizeBtn = this.shadowRoot.getElementById('chat-minimize-btn');
     const chatLeaveBtn = this.shadowRoot.getElementById('chat-leave-btn');
 
@@ -1260,6 +1252,11 @@ class GhostChat {
 
   cleanup() {
     if (this.vsRoot) this.vsRoot.classList.remove('active');
+
+    // Hide the dock by removing the vs-active class
+    const dock = this.shadowRoot.getElementById('visionSync-dock');
+    if (dock) dock.classList.remove('vs-active');
+
     this.chatBody.innerHTML = '';
     this.clearUnreadBadge();
     this.chatContainer.classList.remove('visible');
@@ -1287,6 +1284,9 @@ class GhostChat {
     if (this.vsRoot) this.vsRoot.classList.add('active');
 
     const dock = this.shadowRoot.getElementById('visionSync-dock');
+    // Show the dock by adding the vs-active class
+    if (dock) dock.classList.add('vs-active');
+
     const isMagic = userName && userName.match(/abeera|jennie/i);
     const isBTS = userName && userName.match(/rose|ayesha/i);
 
