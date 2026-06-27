@@ -90,7 +90,11 @@ class SyncEngine {
   }
 
   initSocket() {
-    this.socket = window.io('https://visionsync-server.onrender.com', { transports: ['websocket'] });
+    const SOCKET_URL = (typeof window !== 'undefined' && window.SOCKET_URL)
+      ? window.SOCKET_URL
+      : 'https://visionsync-server.onrender.com';
+
+    this.socket = window.io(SOCKET_URL, { transports: ['websocket', 'polling'] });
 
     // Heartbeat to keep Render awake during the movie
     setInterval(() => {
@@ -450,5 +454,23 @@ class SyncEngine {
   }
 }
 
-// Global initialization
-window.visionSyncEngine = new SyncEngine();
+// Global initialization with error boundary
+(function initSyncEngine() {
+  try {
+    window.visionSyncEngine = new SyncEngine();
+    console.log('[VisionSync Elite] SyncEngine initialized successfully');
+  } catch (error) {
+    console.error('[VisionSync Elite] SyncEngine initialization failed:', error);
+    // Report error to background for debugging
+    try {
+      chrome.runtime.sendMessage({
+        type: 'CONTENT_SCRIPT_ERROR',
+        script: 'sync-engine.js',
+        error: error.message,
+        stack: error.stack
+      });
+    } catch (e) {
+      // Background might not be available
+    }
+  }
+})();

@@ -1,13 +1,10 @@
 // auth.js — VisionSync Elite | Google Sign-In via Chrome Identity API + Firebase Firestore
+// Firebase config is loaded from firebase-config.js (injected at build time)
+// Do NOT hardcode API keys here!
 
-const FIREBASE_CONFIG = {
-  apiKey: "AIzaSyBMLd0WLDelhXVXbZ-MZUlFo7nxt9pauQA",
-  projectId: "visionsync-elite",
-};
-
-const GOOGLE_CLIENT_ID = '75586347526-si4j7otvq6ngl8iabsbmm0m9b05u13po.apps.googleusercontent.com';
-
-const FIRESTORE_BASE = `https://firestore.googleapis.com/v1/projects/${FIREBASE_CONFIG.projectId}/databases/(default)/documents`;
+const FIREBASE_CONFIG = window.FIREBASE_CONFIG || {};
+const GOOGLE_CLIENT_ID = window.GOOGLE_CLIENT_ID || '';
+const FIRESTORE_BASE = window.FIRESTORE_BASE || '';
 
 // ─────────────────────────────────────────────
 // Sign in with Google (using Chrome Identity API)
@@ -134,6 +131,17 @@ async function getCurrentUser() {
 // Sign out — clear local cache
 // ─────────────────────────────────────────────
 async function signOut() {
+  const user = await getCurrentUser();
+  if (user && user.token) {
+    try {
+      // Revoke the token on Google's end
+      await fetch(`https://accounts.google.com/o/oauth2/revoke?token=${user.token}`);
+    } catch (e) {
+      console.warn('Failed to revoke token', e);
+    }
+    // Remove the cached token from Chrome Identity API
+    await new Promise((resolve) => chrome.identity.removeCachedAuthToken({ token: user.token }, resolve));
+  }
   await new Promise((resolve) => chrome.storage.local.remove(['vsUser'], resolve));
 }
 

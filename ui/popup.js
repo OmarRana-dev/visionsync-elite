@@ -56,6 +56,18 @@ document.addEventListener('DOMContentLoaded', () => {
     launchOverlay.style.display = 'none';
     mainApp.style.display = 'none';
     statusMsg.textContent = '';
+    // Clear any pending auth state
+    chrome.storage.local.remove(['authPending']);
+  }
+
+  function showAuthPending() {
+    loginScreen.style.display = 'flex';
+    userProfileStrip.style.display = 'none';
+    redeemSection.style.display = 'none';
+    launchOverlay.style.display = 'none';
+    mainApp.style.display = 'none';
+    loginStatusMsg.innerHTML = 'Authenticating...<br><span style="font-size:11px;color:#888;">Please complete sign-in in the Google window.</span>';
+    googleSignInBtn.disabled = true;
   }
 
   function showUserProfile(user) {
@@ -92,6 +104,8 @@ document.addEventListener('DOMContentLoaded', () => {
 
   function startAuthPolling() {
     stopAuthPolling();
+    // Persist auth-pending state so it survives popup close/reopen
+    chrome.storage.local.set({ authPending: true });
     let attempts = 0;
     const MAX_ATTEMPTS = 360; // poll for up to 3 minutes (360 * 500ms)
 
@@ -101,12 +115,14 @@ document.addEventListener('DOMContentLoaded', () => {
         stopAuthPolling();
         loginStatusMsg.textContent = 'Sign-in timed out. Please try again.';
         googleSignInBtn.disabled = false;
+        chrome.storage.local.remove(['authPending']);
         return;
       }
 
       chrome.storage.local.get(['vsUser'], (result) => {
         if (result.vsUser) {
           stopAuthPolling();
+          chrome.storage.local.remove(['authPending']);
           showUserProfile(result.vsUser);
           checkTabAndShowApp();
         }
@@ -125,7 +141,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
   googleSignInBtn.addEventListener('click', () => {
     googleSignInBtn.disabled = true;
-    loginStatusMsg.innerHTML = 'Google sign-in window opened.<br><span style="font-size:11px;color:#888;">Complete sign-in there, then reopen this extension if needed.</span>';
+    showAuthPending();
 
     // Start polling storage — works even if the popup closes and reopens
     startAuthPolling();
@@ -138,10 +154,12 @@ document.addEventListener('DOMContentLoaded', () => {
       }
       if (response && response.status === 'success') {
         stopAuthPolling();
+        chrome.storage.local.remove(['authPending']);
         showUserProfile(response.user);
         checkTabAndShowApp();
       } else if (response && response.status === 'error') {
         stopAuthPolling();
+        chrome.storage.local.remove(['authPending']);
         loginStatusMsg.textContent = `Sign-in failed: ${response.error}`;
         console.error('[VisionSync] Auth error:', response.error);
         googleSignInBtn.disabled = false;
@@ -149,9 +167,11 @@ document.addEventListener('DOMContentLoaded', () => {
     });
   });
 
-  signOutBtn.addEventListener('click', async () => {
-    await window.vsAuth.signOut();
-    showLoginScreen();
+  signOutBtn.addEventListener('click', () => {
+    // Delegate sign-out to the background service worker (token revocation)
+    chrome.runtime.sendMessage({ type: 'SIGN_OUT' }, () => {
+      showLoginScreen();
+    });
   });
 
   // ── Redeem Code Logic ──────────────────────────────────
@@ -184,11 +204,13 @@ document.addEventListener('DOMContentLoaded', () => {
       if (!user) throw new Error('You must be signed in.');
 
       // 2. Query Firestore for the code
-      // We'll just fetch the document from 'codes' collection directly
-      const FIRESTORE_BASE = 'https://firestore.googleapis.com/v1/projects/visionsync-elite/databases/(default)/documents';
-      const apiKeyQuery = '?key=API_KEY_HERE'; // We need the actual config, wait, config is in auth.js!
+      // Use global FIREBASE_CONFIG injected via firebase-config.js
+      const { apiKey, projectId } = window.FIREBASE_CONFIG || {};
+      if (!apiKey || !projectId) throw new Error('Firebase config not loaded.');
 
-      const codeUrl = `${FIRESTORE_BASE}/codes/${code}?key=${FIREBASE_CONFIG.apiKey}`;
+      const FIRESTORE_BASE = `https://firestore.googleapis.com/v1/projects/${projectId}/databases/(default)/documents`;
+
+      const codeUrl = `${FIRESTORE_BASE}/codes/${code}?key=${apiKey}`;
       const codeRes = await fetch(codeUrl);
 
       if (!codeRes.ok) {
@@ -206,7 +228,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
       // 3. Mark code as redeemed securely (Atomic Transaction using Precondition)
       const updateTime = codeData.updateTime;
-      const updateCodeUrl = `${FIRESTORE_BASE}/codes/${code}?key=${FIREBASE_CONFIG.apiKey}&updateMask.fieldPaths=isRedeemed&updateMask.fieldPaths=redeemedBy&currentDocument.updateTime=${updateTime}`;
+      const updateCodeUrl = `${FIRESTORE_BASE}/codes/${code}?key=${apiKey}&updateMask.fieldPaths=isRedeemed&updateMask.fieldPaths=redeemedBy&currentDocument.updateTime=${updateTime}`;
       const updateCodeRes = await fetch(updateCodeUrl, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
@@ -223,7 +245,7 @@ document.addEventListener('DOMContentLoaded', () => {
       }
 
       // 4. Update User's Theme in Firestore
-      const updateUserUrl = `${FIRESTORE_BASE}/users/${user.googleId}?key=${FIREBASE_CONFIG.apiKey}&updateMask.fieldPaths=theme`;
+      const updateUserUrl = `${FIRESTORE_BASE}/users/${user.googleId}?key=${apiKey}&updateMask.fieldPaths=theme`;
       const updateUserRes = await fetch(updateUserUrl, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
@@ -362,7 +384,7 @@ document.addEventListener('DOMContentLoaded', () => {
       if (!tab) return;
       statusMsg.textContent = 'Injecting VisionSync...';
       chrome.runtime.sendMessage({ type: 'LAUNCH_EXTENSION', tabId: tab.id }, (response) => {
-        if (response && (response.status === 'success' || response.status === 'already_active')) {
+        if (response && (response.success || response.status === 'success' || response.status === 'already_active')) {
           showMainApp('VisionSync Active!');
         } else {
           statusMsg.textContent = 'Injection failed.';
@@ -451,11 +473,16 @@ document.addEventListener('DOMContentLoaded', () => {
 
   // ── Startup: Auth Check → Show Correct Screen ──────────
   // On every popup open, immediately check if a sign-in completed while popup was closed
-  window.vsAuth.getCurrentUser().then((user) => {
-    if (user) {
+  // Also check if auth was pending from a previous session
+  chrome.storage.local.get(['vsUser', 'authPending'], (result) => {
+    if (result.vsUser) {
       stopAuthPolling();
-      showUserProfile(user);
+      showUserProfile(result.vsUser);
       checkTabAndShowApp();
+    } else if (result.authPending) {
+      // Auth was in progress when popup was closed - show pending state and resume polling
+      showAuthPending();
+      startAuthPolling();
     } else {
       showLoginScreen();
     }
