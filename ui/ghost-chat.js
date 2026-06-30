@@ -176,11 +176,7 @@ class GhostChat {
           bottom: 0;
           width: 360px;
           height: 100vh;
-          background: rgba(15, 15, 19, 0.4) !important;
-          backdrop-filter: blur(20px);
-          -webkit-backdrop-filter: blur(20px);
-          border-left: 1px solid rgba(255, 255, 255, 0.08) !important;
-          box-shadow: -10px 0 30px rgba(0,0,0,0.5) !important;
+          background: transparent !important;
           display: none;
           flex-direction: column;
           pointer-events: auto;
@@ -715,7 +711,7 @@ class GhostChat {
           <!-- Movie-level reaction bar (8 slots) -->
           <div id="reaction-bar"></div>
 
-          <div id="input-row" style="padding: 16px; border-top: 1px solid rgba(255,255,255,0.08);">
+          <div id="input-row" style="padding: 16px;">
             <input type="text" id="chat-input" placeholder="Type a message..." autocomplete="off">
             <button class="send-btn" id="send-chat-btn">Send</button>
             <button class="minimize-btn" id="chat-minimize-btn" title="Minimize">
