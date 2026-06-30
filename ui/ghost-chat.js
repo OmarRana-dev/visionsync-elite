@@ -463,34 +463,71 @@ class GhostChat {
 
         /* --- Input Area --- */
         #input-row {
-          display: flex;
-          gap: 8px;
-          align-items: flex-end;
           padding: 0 16px 8px 16px;
+          display: flex;
         }
-        #chat-input {
+
+        .unified-input-wrapper {
+          display: flex;
+          flex-direction: column;
           flex-grow: 1;
           background: rgba(255, 255, 255, 0.08);
           border: 1px solid rgba(255, 255, 255, 0.1);
           border-radius: 18px;
-          padding: 10px 16px;
-          color: #fff;
-          font-size: 13.5px;
-          outline: none;
+          padding: 10px 16px 8px 16px;
           transition: border-color 0.3s;
-          resize: none;
-          max-height: 120px;
-          overflow-y: hidden;
-          font-family: inherit;
-          line-height: 1.4;
-          box-sizing: border-box;
         }
-        #chat-input::-webkit-scrollbar { width: 4px; }
-        #chat-input::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.2); border-radius: 4px; }
-        #chat-input:focus {
+        .unified-input-wrapper:focus-within {
           background: rgba(255, 255, 255, 0.12);
           border-color: rgba(255, 255, 255, 0.2);
         }
+
+        #chat-input {
+          flex-grow: 1;
+          background: transparent;
+          border: none;
+          color: #fff;
+          font-size: 13.5px;
+          outline: none;
+          resize: none;
+          max-height: 120px;
+          overflow-y: auto;
+          font-family: inherit;
+          line-height: 1.4;
+          box-sizing: border-box;
+          width: 100%;
+          padding: 0;
+        }
+        #chat-input::-webkit-scrollbar { width: 4px; }
+        #chat-input::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.2); border-radius: 4px; }
+
+        .unified-actions-row {
+          display: flex;
+          justify-content: flex-end;
+          align-items: center;
+          gap: 4px;
+          margin-top: 4px;
+        }
+
+        .action-icon-btn {
+          background: transparent;
+          border: none;
+          color: rgba(255,255,255,0.7);
+          width: 32px;
+          height: 32px;
+          border-radius: 50%;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          cursor: pointer;
+          transition: transform 0.2s, color 0.2s, background 0.2s;
+        }
+        .action-icon-btn:hover {
+          color: #fff;
+          background: rgba(255,255,255,0.1);
+          transform: scale(1.05);
+        }
+        .action-icon-btn svg { width: 20px; height: 20px; }
         
         .send-btn, .minimize-btn {
           background: linear-gradient(90deg, #ff8a00, #e52e71);
@@ -498,15 +535,15 @@ class GhostChat {
           color: #fff;
           font-weight: 700;
           font-size: 12px;
-          padding: 10px 16px;
-          border-radius: 18px;
+          padding: 8px 16px;
+          border-radius: 16px;
           cursor: pointer;
           transition: transform 0.2s, filter 0.2s;
           display: flex;
           align-items: center;
           justify-content: center;
           gap: 6px;
-          margin-bottom: 1px;
+          margin-left: 4px;
         }
         .send-btn { display: none; }
         .send-btn:hover, .minimize-btn:hover {
@@ -514,28 +551,6 @@ class GhostChat {
           filter: brightness(1.1);
         }
         .minimize-btn svg { width: 14px; height: 14px; }
-
-        .image-upload-btn {
-          background: transparent;
-          border: none;
-          color: rgba(255,255,255,0.7);
-          width: 36px;
-          height: 36px;
-          border-radius: 50%;
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          cursor: pointer;
-          transition: transform 0.2s, color 0.2s, background 0.2s;
-          flex-shrink: 0;
-          margin-bottom: 2px;
-        }
-        .image-upload-btn:hover {
-          color: #fff;
-          background: rgba(255,255,255,0.1);
-          transform: scale(1.05);
-        }
-        .image-upload-btn svg { width: 22px; height: 22px; }
 
         .chat-image {
           max-width: 100%;
@@ -765,24 +780,33 @@ class GhostChat {
           </div>
 
           <!-- Movie-level reaction bar (8 slots) -->
-          <div id="reaction-bar"></div>
+          <div id="reaction-bar" title="Double-click to collapse"></div>
 
           <div style="padding: 0 16px;">
             <img id="chat-image-preview" class="chat-image-preview" src="" />
           </div>
 
           <div id="input-row">
-            <button class="image-upload-btn" id="image-upload-btn" title="Send Image">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                <rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect><circle cx="8.5" cy="8.5" r="1.5"></circle><polyline points="21 15 16 10 5 21"></polyline>
-              </svg>
-            </button>
-            <input type="file" id="image-upload-input" accept="image/*" style="display:none;">
-            <textarea id="chat-input" placeholder="Type a message..." autocomplete="off" rows="1"></textarea>
-            <button class="send-btn" id="send-chat-btn">Send</button>
-            <button class="minimize-btn" id="chat-minimize-btn" title="Minimize">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="5" y1="12" x2="19" y2="12"></line></svg>
-            </button>
+            <div class="unified-input-wrapper">
+              <input type="file" id="image-upload-input" accept="image/*" style="display:none;">
+              <textarea id="chat-input" placeholder="Type a message..." autocomplete="off" rows="1"></textarea>
+              <div class="unified-actions-row">
+                <button class="action-icon-btn" id="open-emoji-picker-btn" title="Add Emoji">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <circle cx="12" cy="12" r="10"></circle><path d="M8 14s1.5 2 4 2 4-2 4-2"></path><line x1="9" y1="9" x2="9.01" y2="9"></line><line x1="15" y1="9" x2="15.01" y2="9"></line>
+                  </svg>
+                </button>
+                <button class="action-icon-btn" id="image-upload-btn" title="Send Image">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect><circle cx="8.5" cy="8.5" r="1.5"></circle><polyline points="21 15 16 10 5 21"></polyline>
+                  </svg>
+                </button>
+                <button class="send-btn" id="send-chat-btn">Send</button>
+                <button class="minimize-btn" id="chat-minimize-btn" title="Minimize">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="5" y1="12" x2="19" y2="12"></line></svg>
+                </button>
+              </div>
+            </div>
           </div>
         </div>
 
@@ -954,6 +978,7 @@ class GhostChat {
           // Standard input insertion
           const input = this.shadowRoot.getElementById('chat-input');
           input.value += emoji;
+          input.dispatchEvent(new Event('input', { bubbles: true })); // Trigger auto-resize and send button toggle
           input.focus();
         }
         picker.classList.remove('visible');
@@ -1137,7 +1162,24 @@ class GhostChat {
     const cancelReplyBtn = this.shadowRoot.getElementById('cancel-reply-btn');
     const closePickerBtn = this.shadowRoot.getElementById('close-picker-btn');
     const chatMinimizeBtn = this.shadowRoot.getElementById('chat-minimize-btn');
+    const openEmojiPickerBtn = this.shadowRoot.getElementById('open-emoji-picker-btn');
+    const reactionBar = this.shadowRoot.getElementById('reaction-bar');
 
+    reactionBar.addEventListener('dblclick', () => {
+      chatMinimizeBtn.click();
+    });
+
+    if (openEmojiPickerBtn) {
+      openEmojiPickerBtn.addEventListener('click', () => {
+        this.msgReactionPickerMode = false;
+        this.burstPickerMode = false;
+        this.customizingSlotIndex = null;
+        const picker = this.shadowRoot.getElementById('emoji-picker-container');
+        const title = this.shadowRoot.getElementById('picker-title');
+        title.textContent = 'SELECT EMOJI';
+        picker.classList.add('visible');
+      });
+    }
 
     let currentImageBase64 = null;
     const imageUploadBtn = this.shadowRoot.getElementById('image-upload-btn');
