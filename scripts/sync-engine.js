@@ -7,6 +7,7 @@ class SyncEngine {
     this.currentUserName = null;
     this.isRemoteSyncing = false;
     this.peerNames = {};
+    this.peerPhotos = {};
     this.hasJoinedOnce = false;
     this.pausedByRemoteBuffer = false; // Track if we were paused by a buffer lock
     this.sessionId = null;
@@ -139,7 +140,17 @@ class SyncEngine {
 
     this.socket.on('existing-users', (users) => {
       console.log('[VisionSync] Existing users received:', users);
-      Object.assign(this.peerNames, users);
+      // Support both old format (socketId -> name) and new format (socketId -> {userName, userPhoto})
+      Object.keys(users).forEach(socketId => {
+        const val = users[socketId];
+        if (typeof val === 'object') {
+          this.peerNames[socketId] = val.userName;
+          this.peerPhotos[socketId] = val.userPhoto || '';
+        } else {
+          this.peerNames[socketId] = val;
+          this.peerPhotos[socketId] = '';
+        }
+      });
       this.updateChatUserList();
     });
 
@@ -277,14 +288,16 @@ class SyncEngine {
       this.callChat('triggerEmojiBurst', data.emoji);
     });
 
-    this.socket.on('user-joined', ({ socketId, userName }) => {
+    this.socket.on('user-joined', ({ socketId, userName, userPhoto }) => {
       this.peerNames[socketId] = userName;
+      this.peerPhotos[socketId] = userPhoto || '';
       this.callChat('addSystemMessage', `${userName} joined`);
       this.updateChatUserList();
     });
 
     this.socket.on('user-left', ({ socketId, userName }) => {
       delete this.peerNames[socketId];
+      delete this.peerPhotos[socketId];
       this.callChat('addSystemMessage', `${userName} left`);
       this.updateChatUserList();
     });
@@ -339,7 +352,8 @@ class SyncEngine {
         isCreate,
         sessionId: this.sessionId,
         movieUrl,
-        hostPhoto
+        hostPhoto,
+        userPhoto: hostPhoto  // broadcast own photo to peers
       }, (response) => {
         if (response && response.error) {
           // If room doesn't exist, don't show UI
@@ -366,13 +380,26 @@ class SyncEngine {
   }
 
   updateChatUserList() {
-    // PREVENT DUPLICATES: Use a Set to ensure unique names in the UI
-    const uniqueNames = new Set(Object.values(this.peerNames));
-    const names = Array.from(uniqueNames);
+    // Build array of {name, photo} objects, deduplicated by name
+    const seen = new Set();
+    const users = [];
 
-    // Include yourself
-    names.unshift(this.currentUserName + " (You)");
-    this.callChat('updateOnlineUsers', names);
+    // Include yourself first
+    chrome.storage.local.get(['vsUser'], (res) => {
+      const myPhoto = res.vsUser?.photo || '';
+      users.push({ name: this.currentUserName + ' (You)', photo: myPhoto });
+      seen.add(this.currentUserName);
+
+      Object.keys(this.peerNames).forEach(socketId => {
+        const name = this.peerNames[socketId];
+        if (!seen.has(name)) {
+          seen.add(name);
+          users.push({ name, photo: this.peerPhotos[socketId] || '' });
+        }
+      });
+
+      this.callChat('updateOnlineUsers', users);
+    });
   }
 
   findVideoElement() {

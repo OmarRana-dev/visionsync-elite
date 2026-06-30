@@ -475,8 +475,8 @@ class GhostChat {
           display: none;
         }
         .active-user-avatar {
-          width: 20px;
-          height: 20px;
+          width: 34px;
+          height: 34px;
           border-radius: 50%;
           object-fit: cover;
           border: 1.5px solid rgba(255,255,255,0.25);
@@ -1815,15 +1815,15 @@ class GhostChat {
     this.chatBody.scrollTop = this.chatBody.scrollHeight;
   }
 
-  updateOnlineUsers(userNames) {
+  updateOnlineUsers(users) {
     const bar = this.shadowRoot.getElementById('active-user-bar');
     if (!bar) return;
 
     bar.innerHTML = '';
 
-    if (!userNames || userNames.length === 0) return;
+    if (!users || users.length === 0) return;
 
-    // Palette for deterministic avatar colors
+    // Palette for deterministic fallback avatar colors (used when no photo)
     const palette = [
       '#e52e71', '#ff8a00', '#a259ff', '#00c2ff',
       '#11998e', '#ee0979', '#f7971e', '#764ba2'
@@ -1838,22 +1838,16 @@ class GhostChat {
     };
 
     const getInitial = (name) => {
-      // Strip "(You)" suffix for display
       const cleaned = name.replace('(You)', '').trim();
       return cleaned.charAt(0).toUpperCase();
     };
 
-    userNames.forEach((name) => {
-      const isMe = name.includes('(You)');
-      const color = getColor(name);
-      const initial = getInitial(name);
-      const displayName = name.replace('(You)', '').trim() + (isMe ? ' (You)' : '');
-
-      // Generate a tiny canvas-based avatar
+    const buildInitialsAvatar = (name) => {
       const canvas = document.createElement('canvas');
       canvas.width = 20;
       canvas.height = 20;
       const ctx = canvas.getContext('2d');
+      const color = getColor(name);
 
       // Background circle
       ctx.beginPath();
@@ -1861,7 +1855,7 @@ class GhostChat {
       ctx.fillStyle = color;
       ctx.fill();
 
-      // Subtle radial highlight for depth
+      // Subtle radial highlight
       const grad = ctx.createRadialGradient(7, 5, 1, 10, 10, 10);
       grad.addColorStop(0, 'rgba(255,255,255,0.25)');
       grad.addColorStop(1, 'rgba(0,0,0,0.15)');
@@ -1875,17 +1869,35 @@ class GhostChat {
       ctx.font = 'bold 9px Inter, sans-serif';
       ctx.textAlign = 'center';
       ctx.textBaseline = 'middle';
-      ctx.fillText(initial, 10, 11);
+      ctx.fillText(getInitial(name), 10, 11);
+
+      return canvas.toDataURL();
+    };
+
+    users.forEach((user) => {
+      // Support both old string format and new {name, photo} format
+      const name = typeof user === 'object' ? user.name : user;
+      const photo = typeof user === 'object' ? (user.photo || '') : '';
+      const isMe = name.includes('(You)');
+      const displayName = name.replace('(You)', '').trim() + (isMe ? ' (You)' : '');
 
       const img = document.createElement('img');
       img.className = 'active-user-avatar';
-      img.src = canvas.toDataURL();
       img.title = displayName;
 
-      // Highlight yourself with a glowing border
+      if (photo) {
+        // Real profile picture
+        img.src = photo;
+        img.onerror = () => { img.src = buildInitialsAvatar(name); };
+      } else {
+        // Fallback: canvas initials avatar
+        img.src = buildInitialsAvatar(name);
+      }
+
+      // Highlight yourself with a warm glow
       if (isMe) {
-        img.style.border = '1.5px solid rgba(255, 138, 0, 0.8)';
-        img.style.boxShadow = `0 0 4px ${color}99`;
+        img.style.border = '1.5px solid rgba(255, 138, 0, 0.9)';
+        img.style.boxShadow = '0 0 5px rgba(255, 138, 0, 0.6)';
       }
 
       bar.appendChild(img);

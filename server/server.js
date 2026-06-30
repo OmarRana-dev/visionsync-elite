@@ -73,6 +73,7 @@ io.on('connection', (socket) => {
     // Store user by sessionId to persist across reconnects
     rooms[roomId].users[sessionId] = {
       userName,
+      userPhoto: options.userPhoto || '',
       socketId: socket.id,
       lastSeen: Date.now()
     };
@@ -88,13 +89,20 @@ io.on('connection', (socket) => {
     const existingUsers = {};
     Object.keys(rooms[roomId].users).forEach(sId => {
       if (sId !== sessionId) {
-        existingUsers[rooms[roomId].users[sId].socketId] = rooms[roomId].users[sId].userName;
+        existingUsers[rooms[roomId].users[sId].socketId] = {
+          userName: rooms[roomId].users[sId].userName,
+          userPhoto: rooms[roomId].users[sId].userPhoto || ''
+        };
       }
     });
     socket.emit('existing-users', existingUsers);
 
     // Notify others
-    socket.to(roomId).emit('user-joined', { socketId: socket.id, userName });
+    socket.to(roomId).emit('user-joined', {
+      socketId: socket.id,
+      userName,
+      userPhoto: options.userPhoto || ''
+    });
 
     if (typeof callback === 'function') callback({ success: true });
     console.log(`${userName} joined ${roomId} (Session: ${sessionId})`);
