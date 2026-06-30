@@ -168,45 +168,28 @@ class GhostChat {
           color: #ff4b2b;
         }
 
-        /* --- Chat container draggable --- */
+        /* --- Chat container (Docked to right, full height) --- */
         #chat-container {
           position: fixed;
-          bottom: 70px;
-          right: 40px;
+          top: 0;
+          right: 0;
+          bottom: 0;
           width: 360px;
-          height: 520px;
-          background: transparent !important;
-          border: none !important;
-          box-shadow: none !important;
+          height: 100vh;
+          background: rgba(15, 15, 19, 0.4) !important;
+          backdrop-filter: blur(20px);
+          -webkit-backdrop-filter: blur(20px);
+          border-left: 1px solid rgba(255, 255, 255, 0.08) !important;
+          box-shadow: -10px 0 30px rgba(0,0,0,0.5) !important;
           display: none;
           flex-direction: column;
-          pointer-events: none;
-          overflow: visible;
+          pointer-events: auto;
           z-index: 2147483647;
         }
         #chat-container.visible {
           display: flex;
         }
-        /* Drag handle bar at top of input box */
-        #chat-drag-handle {
-          height: 18px;
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          cursor: grab;
-          pointer-events: auto;
-          opacity: 0.4;
-          transition: opacity 0.2s;
-        }
-        #chat-drag-handle:hover { opacity: 0.8; }
-        #chat-drag-handle:active { cursor: grabbing; }
-        #chat-drag-handle::before {
-          content: '';
-          width: 36px;
-          height: 3px;
-          background: rgba(255,255,255,0.7);
-          border-radius: 3px;
-        }
+
 
         #chat-body {
           flex-grow: 1;
@@ -494,7 +477,7 @@ class GhostChat {
           border-color: rgba(255, 255, 255, 0.2);
         }
         
-        .send-btn {
+        .send-btn, .minimize-btn {
           background: linear-gradient(90deg, #ff8a00, #e52e71);
           border: none;
           color: #fff;
@@ -504,11 +487,18 @@ class GhostChat {
           border-radius: 16px;
           cursor: pointer;
           transition: transform 0.2s, filter 0.2s;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          gap: 6px;
         }
-        .send-btn:hover {
+        .send-btn { display: none; }
+        .minimize-btn { background: rgba(255,255,255,0.1); }
+        .send-btn:hover, .minimize-btn:hover {
           transform: scale(1.05);
           filter: brightness(1.1);
         }
+        .minimize-btn svg { width: 14px; height: 14px; }
 
         .input-btn {
           width: 32px; height: 32px;
@@ -702,17 +692,6 @@ class GhostChat {
       </div>
 
       <div id="chat-container">
-        <!-- Controls bar: minimize + leave (visible when dock is hidden) -->
-        <div id="chat-controls-bar">
-          <div class="chat-ctrl-btn" id="chat-minimize-btn" title="Minimize">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="5" y1="12" x2="19" y2="12"></line></svg>
-            Minimize
-          </div>
-          <div class="chat-ctrl-btn leave" id="chat-leave-btn" title="Leave Room">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"></path><polyline points="16 17 21 12 16 7"></polyline><line x1="21" y1="12" x2="9" y2="12"></line></svg>
-            Leave
-          </div>
-        </div>
         <div id="chat-body">
           <!-- Spacer at top allows flexing items to bottom while keeping scrolling working perfectly -->
           <div id="chat-body-spacer" style="margin-top: auto;"></div>
@@ -736,9 +715,12 @@ class GhostChat {
           <!-- Movie-level reaction bar (8 slots) -->
           <div id="reaction-bar"></div>
 
-          <div id="input-row">
+          <div id="input-row" style="padding: 16px; border-top: 1px solid rgba(255,255,255,0.08);">
             <input type="text" id="chat-input" placeholder="Type a message..." autocomplete="off">
             <button class="send-btn" id="send-chat-btn">Send</button>
+            <button class="minimize-btn" id="chat-minimize-btn" title="Minimize">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="5" y1="12" x2="19" y2="12"></line></svg>
+            </button>
           </div>
         </div>
 
@@ -752,7 +734,6 @@ class GhostChat {
           <div id="picker-slots-row"></div>
           <div class="picker-grid" id="picker-grid"></div>
         </div>
-        <div id="chat-drag-handle"></div>
       </div>
     `;
 
@@ -1086,57 +1067,13 @@ class GhostChat {
     document.addEventListener('mouseup', stopDockDrag);
     document.addEventListener('touchend', stopDockDrag);
 
-    // ─── Chat Container Drag ───
-    const chatEl = this.shadowRoot.getElementById('chat-container');
-    const chatDragHandle = this.shadowRoot.getElementById('chat-drag-handle');
-    let chatDragging = false, chatStartX = 0, chatStartY = 0, chatStartLeft = 0, chatStartBottom = 0;
-
-    const startChatDrag = (e) => {
-      chatDragging = true;
-      const clientX = e.clientX || (e.touches && e.touches[0].clientX);
-      const clientY = e.clientY || (e.touches && e.touches[0].clientY);
-      const rect = chatEl.getBoundingClientRect();
-      chatStartX = clientX;
-      chatStartY = clientY;
-      chatStartLeft = rect.left;
-      chatStartBottom = window.innerHeight - rect.bottom;
-      chatEl.style.right = 'auto';
-      chatEl.style.left = chatStartLeft + 'px';
-      chatEl.style.bottom = chatStartBottom + 'px';
-      e.preventDefault();
-    };
-    chatDragHandle.addEventListener('mousedown', startChatDrag);
-    chatDragHandle.addEventListener('touchstart', startChatDrag, { passive: false });
-
-    document.addEventListener('mousemove', (e) => {
-      if (!chatDragging) return;
-      const dx = e.clientX - chatStartX;
-      const dy = e.clientY - chatStartY;
-      const newLeft = Math.max(0, Math.min(window.innerWidth - chatEl.offsetWidth, chatStartLeft + dx));
-      const newBottom = Math.max(0, Math.min(window.innerHeight - chatEl.offsetHeight, chatStartBottom - dy));
-      chatEl.style.left = newLeft + 'px';
-      chatEl.style.bottom = newBottom + 'px';
-    });
-    document.addEventListener('touchmove', (e) => {
-      if (!chatDragging) return;
-      const dx = e.touches[0].clientX - chatStartX;
-      const dy = e.touches[0].clientY - chatStartY;
-      const newLeft = Math.max(0, Math.min(window.innerWidth - chatEl.offsetWidth, chatStartLeft + dx));
-      const newBottom = Math.max(0, Math.min(window.innerHeight - chatEl.offsetHeight, chatStartBottom - dy));
-      chatEl.style.left = newLeft + 'px';
-      chatEl.style.bottom = newBottom + 'px';
-    }, { passive: true });
-    const stopChatDrag = () => { chatDragging = false; };
-    document.addEventListener('mouseup', stopChatDrag);
-    document.addEventListener('touchend', stopChatDrag);
-
     const input = this.shadowRoot.getElementById('chat-input');
     const sendBtn = this.shadowRoot.getElementById('send-chat-btn');
     const toggleChatBtn = this.shadowRoot.getElementById('toggle-chat-btn');
-    const copyBtn = this.shadowRoot.getElementById('copy-room-btn');
     const exitBtn = this.shadowRoot.getElementById('exit-room-btn');
     const cancelReplyBtn = this.shadowRoot.getElementById('cancel-reply-btn');
     const closePickerBtn = this.shadowRoot.getElementById('close-picker-btn');
+    const chatMinimizeBtn = this.shadowRoot.getElementById('chat-minimize-btn');
 
 
     const handleSendMessage = () => {
@@ -1162,6 +1099,11 @@ class GhostChat {
       input.value = '';
       this.currentReply = null;
       this.shadowRoot.getElementById('reply-preview-bar').classList.remove('visible');
+      
+      // Reset input buttons to default state
+      sendBtn.style.display = 'none';
+      chatMinimizeBtn.style.display = 'flex';
+      
       this.callEngine('broadcast', { type: 'TYPING', senderName: this.lastUserName, isTyping: false });
     };
 
@@ -1174,8 +1116,16 @@ class GhostChat {
 
     sendBtn.addEventListener('click', handleSendMessage);
 
-    // Typing notice
+    // Typing notice and send/minimize toggle
     input.addEventListener('input', () => {
+      if (input.value.trim().length > 0) {
+        sendBtn.style.display = 'flex';
+        chatMinimizeBtn.style.display = 'none';
+      } else {
+        sendBtn.style.display = 'none';
+        chatMinimizeBtn.style.display = 'flex';
+      }
+
       this.callEngine('broadcast', { type: 'TYPING', senderName: this.lastUserName, isTyping: true });
       if (this.typingTimeout) clearTimeout(this.typingTimeout);
       this.typingTimeout = setTimeout(() => {
@@ -1188,9 +1138,6 @@ class GhostChat {
     chrome.runtime.onMessage.addListener((message) => {
       if (message.type === 'UI_CLEANUP') this.cleanup();
     });
-
-    const chatMinimizeBtn = this.shadowRoot.getElementById('chat-minimize-btn');
-    const chatLeaveBtn = this.shadowRoot.getElementById('chat-leave-btn');
 
     toggleChatBtn.addEventListener('click', () => {
       this.chatContainer.classList.add('visible');
@@ -1212,10 +1159,6 @@ class GhostChat {
         <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path>
         <line x1="3" y1="3" x2="21" y2="21" stroke="rgba(255,255,255,0.4)" stroke-width="2.5"></line>
       `;
-    });
-
-    chatLeaveBtn.addEventListener('click', () => {
-      this.cleanup();
     });
 
 
