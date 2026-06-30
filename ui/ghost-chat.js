@@ -34,10 +34,10 @@ class GhostChat {
   init() {
     this.container = document.createElement('div');
     this.container.id = 'visionSync-ghost-container';
-    // IMPORTANT: NO position/z-index/transform on host container —
-    // those would create a stacking context that traps child position:fixed
-    // elements relative to this 0×0 div instead of the real viewport.
-    this.container.style.cssText = 'all:unset;';
+    // CRITICAL: Host container must NOT create a stacking context.
+    // No position, no z-index, no transform, no filter, no will-change.
+    // Just a plain block div — fixed children inside Shadow DOM will
+    // position relative to the REAL viewport.
 
     // Inject into fullscreen element or body
     const attachTarget = document.fullscreenElement || document.body;
@@ -95,10 +95,10 @@ class GhostChat {
   render() {
     this.shadowRoot.innerHTML = `
       <style>
-        /* Dock and chat are position:fixed relative to the REAL viewport.
-           They start hidden and are shown explicitly via setRoomInfo(). */
+        /* --- Floating Dock --- */
+        /* Visibility is controlled ENTIRELY by inline style from JS.
+           dock.style.display = 'flex' | 'none' — bulletproof, no CSS override possible. */
         #visionSync-dock {
-          display: none;
           position: fixed;
           right: 0px;
           top: 70%;
@@ -118,10 +118,8 @@ class GhostChat {
           border: 1px solid rgba(255, 255, 255, 0.08);
           cursor: grab;
           user-select: none;
+          z-index: 2147483647;
           transition: opacity 0.25s, transform 0.25s;
-        }
-        #visionSync-dock.vs-active {
-          display: flex;
         }
         /* Dock hides when chat is open */
         #visionSync-dock.hidden {
@@ -184,6 +182,7 @@ class GhostChat {
           flex-direction: column;
           pointer-events: none;
           overflow: visible;
+          z-index: 2147483647;
         }
         #chat-container.visible {
           display: flex;
@@ -684,8 +683,7 @@ class GhostChat {
         }
       </style>
 
-      <div id="vs-root">
-        <div id="visionSync-dock">
+      <div id="visionSync-dock" style="display:none">
           <div id="dock-drag-handle"></div>
 
           <div class="dock-icon" id="copy-room-btn" title="Copy Room URL">
@@ -756,10 +754,9 @@ class GhostChat {
         </div>
         <div id="chat-drag-handle"></div>
       </div>
-    </div>
     `;
 
-    this.vsRoot = this.shadowRoot.getElementById('vs-root');
+    this.dock = this.shadowRoot.getElementById('visionSync-dock');
     this.chatBody = this.shadowRoot.getElementById('chat-body');
     this.chatContainer = this.shadowRoot.getElementById('chat-container');
     this.unreadBadge = this.shadowRoot.getElementById('unread-badge');
@@ -1140,7 +1137,6 @@ class GhostChat {
     const exitBtn = this.shadowRoot.getElementById('exit-room-btn');
     const cancelReplyBtn = this.shadowRoot.getElementById('cancel-reply-btn');
     const closePickerBtn = this.shadowRoot.getElementById('close-picker-btn');
-    const customizeMovieBtn = this.shadowRoot.getElementById('customize-movie-btn');
 
 
     const handleSendMessage = () => {
@@ -1198,7 +1194,7 @@ class GhostChat {
 
     toggleChatBtn.addEventListener('click', () => {
       this.chatContainer.classList.add('visible');
-      dock.classList.add('hidden');
+      if (this.dock) this.dock.style.display = 'none'; // hide dock
       this.clearUnreadBadge();
       toggleChatBtn.classList.add('active');
       toggleChatBtn.classList.remove('muted');
@@ -1208,7 +1204,7 @@ class GhostChat {
 
     chatMinimizeBtn.addEventListener('click', () => {
       this.chatContainer.classList.remove('visible');
-      dock.classList.remove('hidden');
+      if (this.dock) this.dock.style.display = 'flex'; // show dock
       toggleChatBtn.classList.remove('active');
       toggleChatBtn.classList.add('muted');
       const chatSvg = this.shadowRoot.getElementById('chat-svg');
@@ -1222,9 +1218,6 @@ class GhostChat {
       this.cleanup();
     });
 
-    customizeMovieBtn.addEventListener('click', () => {
-      this.toggleMovieCustomizeMode();
-    });
 
     closePickerBtn.addEventListener('click', () => {
       this.shadowRoot.getElementById('emoji-picker-container').classList.remove('visible');
@@ -1251,11 +1244,8 @@ class GhostChat {
   }
 
   cleanup() {
-    if (this.vsRoot) this.vsRoot.classList.remove('active');
-
-    // Hide the dock by removing the vs-active class
-    const dock = this.shadowRoot.getElementById('visionSync-dock');
-    if (dock) dock.classList.remove('vs-active');
+    // Hide dock via inline style (bulletproof)
+    if (this.dock) this.dock.style.display = 'none';
 
     this.chatBody.innerHTML = '';
     this.clearUnreadBadge();
@@ -1280,12 +1270,17 @@ class GhostChat {
     this.roomId = roomId;
     this.lastUserName = userName;
 
-    // Activate the inner visibility wrapper (100% reliable vs :host CSS)
-    if (this.vsRoot) this.vsRoot.classList.add('active');
+    console.log('[VisionSync] setRoomInfo called — showing dock for room:', roomId);
 
-    const dock = this.shadowRoot.getElementById('visionSync-dock');
-    // Show the dock by adding the vs-active class
-    if (dock) dock.classList.add('vs-active');
+    // Show dock via INLINE STYLE — this is the most reliable method.
+    // Inline styles have highest CSS specificity and cannot be overridden.
+    const dock = this.dock || this.shadowRoot.getElementById('visionSync-dock');
+    if (dock) {
+      dock.style.display = 'flex';
+      console.log('[VisionSync] Dock display set to flex');
+    } else {
+      console.error('[VisionSync] FATAL: Dock element not found in shadow DOM!');
+    }
 
     const isMagic = userName && userName.match(/abeera|jennie/i);
     const isBTS = userName && userName.match(/rose|ayesha/i);
