@@ -173,9 +173,8 @@ class GhostChat {
           position: fixed;
           top: 0;
           right: 0;
-          bottom: 0;
           width: 360px;
-          height: 100vh;
+          height: 95vh;
           background: transparent !important;
           display: none;
           flex-direction: column;
@@ -190,7 +189,7 @@ class GhostChat {
         #chat-body {
           flex-grow: 1;
           overflow-y: auto;
-          padding: 16px;
+          // padding: 10px;
           display: flex;
           flex-direction: column;
           gap: 14px;
@@ -423,13 +422,24 @@ class GhostChat {
           40% { transform: scale(1.2); opacity: 1; }
         }
 
+        #users-and-input-container {
+          background: rgba(15, 15, 19, 0.4);
+          backdrop-filter: blur(10px);
+          -webkit-backdrop-filter: blur(10px);
+          border-top: 1px solid rgba(255, 255, 255, 0.08);
+          border-top-left-radius: 16px;
+          border-top-right-radius: 16px;
+          padding-bottom: 8px;
+          display: flex;
+          flex-direction: column;
+        }
+
         /* --- Movie reactions screen burst bar (8 slots) --- */
         #reaction-bar {
           display: flex;
           justify-content: space-around;
           align-items: center;
-          padding: 4px 6px;
-          border-top: 1px solid rgba(255, 255, 255, 0.05);
+          padding: 8px 12px;
         }
         .reaction-item {
           font-size: 20px;
@@ -455,19 +465,28 @@ class GhostChat {
         #input-row {
           display: flex;
           gap: 8px;
-          align-items: center;
+          align-items: flex-end;
+          padding: 0 16px 8px 16px;
         }
         #chat-input {
           flex-grow: 1;
           background: rgba(255, 255, 255, 0.08);
           border: 1px solid rgba(255, 255, 255, 0.1);
           border-radius: 18px;
-          padding: 8px 16px;
+          padding: 10px 16px;
           color: #fff;
           font-size: 13.5px;
           outline: none;
-          transition: all 0.3s;
+          transition: border-color 0.3s;
+          resize: none;
+          max-height: 120px;
+          overflow-y: hidden;
+          font-family: inherit;
+          line-height: 1.4;
+          box-sizing: border-box;
         }
+        #chat-input::-webkit-scrollbar { width: 4px; }
+        #chat-input::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.2); border-radius: 4px; }
         #chat-input:focus {
           background: rgba(255, 255, 255, 0.12);
           border-color: rgba(255, 255, 255, 0.2);
@@ -479,22 +498,59 @@ class GhostChat {
           color: #fff;
           font-weight: 700;
           font-size: 12px;
-          padding: 8px 16px;
-          border-radius: 16px;
+          padding: 10px 16px;
+          border-radius: 18px;
           cursor: pointer;
           transition: transform 0.2s, filter 0.2s;
           display: flex;
           align-items: center;
           justify-content: center;
           gap: 6px;
+          margin-bottom: 1px;
         }
         .send-btn { display: none; }
-        .minimize-btn { background: rgba(255,255,255,0.1); }
         .send-btn:hover, .minimize-btn:hover {
           transform: scale(1.05);
           filter: brightness(1.1);
         }
         .minimize-btn svg { width: 14px; height: 14px; }
+
+        .image-upload-btn {
+          background: transparent;
+          border: none;
+          color: rgba(255,255,255,0.7);
+          width: 36px;
+          height: 36px;
+          border-radius: 50%;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          cursor: pointer;
+          transition: transform 0.2s, color 0.2s, background 0.2s;
+          flex-shrink: 0;
+          margin-bottom: 2px;
+        }
+        .image-upload-btn:hover {
+          color: #fff;
+          background: rgba(255,255,255,0.1);
+          transform: scale(1.05);
+        }
+        .image-upload-btn svg { width: 22px; height: 22px; }
+
+        .chat-image {
+          max-width: 100%;
+          border-radius: 12px;
+          margin-top: 6px;
+          cursor: pointer;
+          border: 1px solid rgba(255,255,255,0.1);
+        }
+        .chat-image-preview {
+          max-height: 80px;
+          border-radius: 8px;
+          border: 1px solid rgba(255,255,255,0.2);
+          margin-bottom: 8px;
+          display: none;
+        }
 
         .input-btn {
           width: 32px; height: 32px;
@@ -711,8 +767,18 @@ class GhostChat {
           <!-- Movie-level reaction bar (8 slots) -->
           <div id="reaction-bar"></div>
 
-          <div id="input-row" style="padding: 16px;">
-            <input type="text" id="chat-input" placeholder="Type a message..." autocomplete="off">
+          <div style="padding: 0 16px;">
+            <img id="chat-image-preview" class="chat-image-preview" src="" />
+          </div>
+
+          <div id="input-row">
+            <button class="image-upload-btn" id="image-upload-btn" title="Send Image">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect><circle cx="8.5" cy="8.5" r="1.5"></circle><polyline points="21 15 16 10 5 21"></polyline>
+              </svg>
+            </button>
+            <input type="file" id="image-upload-input" accept="image/*" style="display:none;">
+            <textarea id="chat-input" placeholder="Type a message..." autocomplete="off" rows="1"></textarea>
             <button class="send-btn" id="send-chat-btn">Send</button>
             <button class="minimize-btn" id="chat-minimize-btn" title="Minimize">
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="5" y1="12" x2="19" y2="12"></line></svg>
@@ -1073,13 +1139,56 @@ class GhostChat {
     const chatMinimizeBtn = this.shadowRoot.getElementById('chat-minimize-btn');
 
 
+    let currentImageBase64 = null;
+    const imageUploadBtn = this.shadowRoot.getElementById('image-upload-btn');
+    const imageUploadInput = this.shadowRoot.getElementById('image-upload-input');
+    const imagePreview = this.shadowRoot.getElementById('chat-image-preview');
+
+    imageUploadBtn.addEventListener('click', () => imageUploadInput.click());
+
+    imageUploadInput.addEventListener('change', (e) => {
+      const file = e.target.files[0];
+      if (!file) return;
+
+      const reader = new FileReader();
+      reader.onload = (event) => {
+        const img = new Image();
+        img.onload = () => {
+          const canvas = document.createElement('canvas');
+          const MAX_WIDTH = 800;
+          let width = img.width;
+          let height = img.height;
+
+          if (width > MAX_WIDTH) {
+            height = Math.round((height * MAX_WIDTH) / width);
+            width = MAX_WIDTH;
+          }
+
+          canvas.width = width;
+          canvas.height = height;
+          const ctx = canvas.getContext('2d');
+          ctx.drawImage(img, 0, 0, width, height);
+
+          currentImageBase64 = canvas.toDataURL('image/jpeg', 0.7);
+          imagePreview.src = currentImageBase64;
+          imagePreview.style.display = 'block';
+
+          sendBtn.style.display = 'flex';
+          chatMinimizeBtn.style.display = 'none';
+        };
+        img.src = event.target.result;
+      };
+      reader.readAsDataURL(file);
+      imageUploadInput.value = '';
+    });
+
     const handleSendMessage = () => {
       const text = input.value.trim();
-      if (!text) return;
+      if (!text && !currentImageBase64) return;
 
       const msgId = 'msg-' + Date.now() + '-' + Math.floor(Math.random() * 1000);
 
-      this.addMessage(text, true, '', this.currentReply, msgId, this.currentUserEmail, this.currentUserTheme, this.currentUserRole, this.currentUserPhoto);
+      this.addMessage(text, true, '', this.currentReply, msgId, this.currentUserEmail, this.currentUserTheme, this.currentUserRole, this.currentUserPhoto, currentImageBase64);
 
       this.callEngine('broadcast', {
         type: 'CHAT',
@@ -1090,32 +1199,41 @@ class GhostChat {
         userRole: this.currentUserRole || '',
         userPhoto: this.currentUserPhoto || '',
         replyTo: this.currentReply,
-        msgId: msgId
+        msgId: msgId,
+        imageUrl: currentImageBase64
       });
 
       input.value = '';
+      input.style.height = 'auto'; // Reset height
+      currentImageBase64 = null;
+      imagePreview.src = '';
+      imagePreview.style.display = 'none';
+
       this.currentReply = null;
       this.shadowRoot.getElementById('reply-preview-bar').classList.remove('visible');
-      
-      // Reset input buttons to default state
+
       sendBtn.style.display = 'none';
       chatMinimizeBtn.style.display = 'flex';
-      
+
       this.callEngine('broadcast', { type: 'TYPING', senderName: this.lastUserName, isTyping: false });
     };
 
     input.addEventListener('keypress', (e) => {
       e.stopPropagation();
-      if (e.key === 'Enter') {
+      if (e.key === 'Enter' && !e.shiftKey) {
+        e.preventDefault();
         handleSendMessage();
       }
     });
 
     sendBtn.addEventListener('click', handleSendMessage);
 
-    // Typing notice and send/minimize toggle
+    // Typing notice, auto-resize, and send/minimize toggle
     input.addEventListener('input', () => {
-      if (input.value.trim().length > 0) {
+      input.style.height = 'auto';
+      input.style.height = (input.scrollHeight) + 'px';
+
+      if (input.value.trim().length > 0 || currentImageBase64) {
         sendBtn.style.display = 'flex';
         chatMinimizeBtn.style.display = 'none';
       } else {
@@ -1333,7 +1451,7 @@ class GhostChat {
   }
 
   // Facebook Live style message bubbles
-  addMessage(text, isLocal, senderName = '', replyTo = null, msgId = null, senderEmail = '', senderTheme = '', senderRole = '', senderPhoto = '') {
+  addMessage(text, isLocal, senderName = '', replyTo = null, msgId = null, senderEmail = '', senderTheme = '', senderRole = '', senderPhoto = '', imageUrl = null) {
     const row = document.createElement('div');
     row.className = 'message-row';
 
@@ -1454,6 +1572,20 @@ class GhostChat {
 
     textLine.appendChild(actionButtons);
     contentArea.appendChild(textLine);
+
+    if (imageUrl) {
+      const imgLine = document.createElement('div');
+      imgLine.className = 'msg-image-line';
+      const imgEl = document.createElement('img');
+      imgEl.className = 'chat-image';
+      imgEl.src = imageUrl;
+      imgEl.addEventListener('click', () => {
+        const win = window.open();
+        if (win) { win.document.write(`<img src="${imageUrl}" style="max-width:100%;height:auto;display:block;margin:0 auto;" />`); }
+      });
+      imgLine.appendChild(imgEl);
+      contentArea.appendChild(imgLine);
+    }
     contentArea.appendChild(reactionsRow);
     row.appendChild(contentArea);
 
