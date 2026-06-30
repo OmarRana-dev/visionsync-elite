@@ -439,7 +439,7 @@ class GhostChat {
           display: flex;
           justify-content: space-around;
           align-items: center;
-          padding: 8px 12px;
+          // padding: 8px 12px;
         }
         .reaction-item {
           font-size: 20px;
@@ -461,9 +461,47 @@ class GhostChat {
           to { transform: rotate(4deg) scale(1.1); }
         }
 
+        /* --- Active User Bar --- */
+        #active-user-bar {
+          display: flex;
+          align-items: center;
+          gap: 5px;
+          padding: 4px 14px;
+          min-height: 0;
+          overflow: hidden;
+          flex-wrap: nowrap;
+        }
+        #active-user-bar:empty {
+          display: none;
+        }
+        .active-user-avatar {
+          width: 20px;
+          height: 20px;
+          border-radius: 50%;
+          object-fit: cover;
+          border: 1.5px solid rgba(255,255,255,0.25);
+          flex-shrink: 0;
+          cursor: default;
+          transition: transform 0.2s ease, opacity 0.3s ease;
+          animation: avatar-pop-in 0.25s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+        }
+        .active-user-avatar:hover {
+          transform: scale(1.35);
+          z-index: 2;
+        }
+        @keyframes avatar-pop-in {
+          from { transform: scale(0); opacity: 0; }
+          to   { transform: scale(1); opacity: 1; }
+        }
+        .active-user-count {
+          font-size: 10px;
+          color: rgba(255,255,255,0.5);
+          margin-left: 2px;
+          white-space: nowrap;
+        }
+
         /* --- Input Area --- */
         #input-row {
-          padding: 0 16px 8px 16px;
           display: flex;
         }
 
@@ -778,6 +816,9 @@ class GhostChat {
             <span class="typing-text">someone is typing</span>
             <div class="typing-dots"><span></span><span></span><span></span></div>
           </div>
+
+          <!-- Active User Bar -->
+          <div id="active-user-bar"></div>
 
           <!-- Movie-level reaction bar (8 slots) -->
           <div id="reaction-bar" title="Double-click to collapse"></div>
@@ -1775,7 +1816,80 @@ class GhostChat {
   }
 
   updateOnlineUsers(userNames) {
-    // Active user bar removed from template
+    const bar = this.shadowRoot.getElementById('active-user-bar');
+    if (!bar) return;
+
+    bar.innerHTML = '';
+
+    if (!userNames || userNames.length === 0) return;
+
+    // Palette for deterministic avatar colors
+    const palette = [
+      '#e52e71', '#ff8a00', '#a259ff', '#00c2ff',
+      '#11998e', '#ee0979', '#f7971e', '#764ba2'
+    ];
+
+    const getColor = (name) => {
+      let hash = 0;
+      for (let i = 0; i < name.length; i++) {
+        hash = name.charCodeAt(i) + ((hash << 5) - hash);
+      }
+      return palette[Math.abs(hash) % palette.length];
+    };
+
+    const getInitial = (name) => {
+      // Strip "(You)" suffix for display
+      const cleaned = name.replace('(You)', '').trim();
+      return cleaned.charAt(0).toUpperCase();
+    };
+
+    userNames.forEach((name) => {
+      const isMe = name.includes('(You)');
+      const color = getColor(name);
+      const initial = getInitial(name);
+      const displayName = name.replace('(You)', '').trim() + (isMe ? ' (You)' : '');
+
+      // Generate a tiny canvas-based avatar
+      const canvas = document.createElement('canvas');
+      canvas.width = 20;
+      canvas.height = 20;
+      const ctx = canvas.getContext('2d');
+
+      // Background circle
+      ctx.beginPath();
+      ctx.arc(10, 10, 10, 0, Math.PI * 2);
+      ctx.fillStyle = color;
+      ctx.fill();
+
+      // Subtle radial highlight for depth
+      const grad = ctx.createRadialGradient(7, 5, 1, 10, 10, 10);
+      grad.addColorStop(0, 'rgba(255,255,255,0.25)');
+      grad.addColorStop(1, 'rgba(0,0,0,0.15)');
+      ctx.beginPath();
+      ctx.arc(10, 10, 10, 0, Math.PI * 2);
+      ctx.fillStyle = grad;
+      ctx.fill();
+
+      // Initial letter
+      ctx.fillStyle = '#fff';
+      ctx.font = 'bold 9px Inter, sans-serif';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText(initial, 10, 11);
+
+      const img = document.createElement('img');
+      img.className = 'active-user-avatar';
+      img.src = canvas.toDataURL();
+      img.title = displayName;
+
+      // Highlight yourself with a glowing border
+      if (isMe) {
+        img.style.border = '1.5px solid rgba(255, 138, 0, 0.8)';
+        img.style.boxShadow = `0 0 4px ${color}99`;
+      }
+
+      bar.appendChild(img);
+    });
   }
 }
 
