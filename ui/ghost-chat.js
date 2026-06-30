@@ -1070,6 +1070,7 @@ class GhostChat {
     const input = this.shadowRoot.getElementById('chat-input');
     const sendBtn = this.shadowRoot.getElementById('send-chat-btn');
     const toggleChatBtn = this.shadowRoot.getElementById('toggle-chat-btn');
+    const copyBtn = this.shadowRoot.getElementById('copy-room-btn');
     const exitBtn = this.shadowRoot.getElementById('exit-room-btn');
     const cancelReplyBtn = this.shadowRoot.getElementById('cancel-reply-btn');
     const closePickerBtn = this.shadowRoot.getElementById('close-picker-btn');
