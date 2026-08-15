@@ -1,0 +1,56 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" width="128" height="128">
+  <defs>
+    <linearGradient id="bgGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#0f172a"/>
+      <stop offset="50%" style="stop-color:#1e1b4b"/>
+      <stop offset="100%" style="stop-color:#312e81"/>
+    </linearGradient>
+    <linearGradient id="accentGrad" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" style="stop-color:#06b6d4"/>
+      <stop offset="50%" style="stop-color:#8b5cf6"/>
+      <stop offset="100%" style="stop-color:#ec4899"/>
+    </linearGradient>
+    <linearGradient id="textGrad" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" style="stop-color:#ffffff"/>
+      <stop offset="100%" style="stop-color:#e0e7ff"/>
+    </linearGradient>
+    <filter id="glow" x="-50%" y="-50%" width="200%" height="200%">
+      <feGaussianBlur stdDeviation="4" result="blur"/>
+      <feMerge>
+        <feMergeNode in="blur"/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
+  </defs>
+
+  <!-- Background -->
+  <rect width="128" height="128" rx="24" fill="url(#bgGrad)"/>
+
+  <!-- Outer glow ring -->
+  <circle cx="64" cy="64" r="54" fill="none" stroke="url(#accentGrad)" stroke-width="3" opacity="0.6"/>
+
+  <!-- Inner accent ring -->
+  <circle cx="64" cy="64" r="46" fill="none" stroke="url(#accentGrad)" stroke-width="2" opacity="0.4"/>
+
+  <!-- Play button shape -->
+  <g transform="translate(64, 64)">
+    <!-- Play triangle -->
+    <path d="M-18 -22 L 22 0 L -18 22 Z" fill="url(#accentGrad)" filter="url(#glow)"/>
+
+    <!-- Sync waves -->
+    <g opacity="0.7">
+      <path d="M-35 -30 Q -25 -40 -15 -30 Q -5 -20 5 -30 Q 15 -40 25 -30 Q 35 -20 45 -30" fill="none" stroke="#06b6d4" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
+        <animate attributeName="stroke-dashoffset" from="0" to="100" dur="2s" repeatCount="indefinite"/>
+      </path>
+      <path d="M-35 0 Q -25 -10 -15 0 Q -5 10 5 0 Q 15 -10 25 0 Q 35 10 45 0" fill="none" stroke="#8b5cf6" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
+        <animate attributeName="stroke-dashoffset" from="0" to="100" dur="2s" repeatCount="indefinite"/>
+      </path>
+      <path d="M-35 30 Q -25 40 -15 30 Q -5 20 5 30 Q 15 40 25 30 Q 35 20 45 30" fill="none" stroke="#ec4899" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
+        <animate attributeName="stroke-dashoffset" from="0" to="100" dur="2s" repeatCount="indefinite"/>
+      </path>
+    </g>
+  </g>
+
+  <!-- "VS" text fallback for small sizes -->
+  <text x="64" y="90" font-family="system-ui, sans-serif" font-weight="800" font-size="18" fill="url(#textGrad)" text-anchor="middle" opacity="0.9">VS</text>
+</svg>

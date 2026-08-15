@@ -466,7 +466,6 @@ class GhostChat {
           display: flex;
           align-items: center;
           gap: 5px;
-          padding: 4px 14px;
           min-height: 0;
           overflow: hidden;
           flex-wrap: nowrap;
@@ -485,10 +484,7 @@ class GhostChat {
           transition: transform 0.2s ease, opacity 0.3s ease;
           animation: avatar-pop-in 0.25s cubic-bezier(0.175, 0.885, 0.32, 1.275);
         }
-        .active-user-avatar:hover {
-          transform: scale(1.35);
-          z-index: 2;
-        }
+ 
         @keyframes avatar-pop-in {
           from { transform: scale(0); opacity: 0; }
           to   { transform: scale(1); opacity: 1; }

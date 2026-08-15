@@ -40,13 +40,23 @@
     "wss://*.onrender.com/*"
   ],
   "background": {
-    "service_worker": "background.js",
-    "type": "module"
+    "service_worker": "background.js"
   },
   "web_accessible_resources": [
     {
       "resources": ["ui/*", "scripts/*", "icons/*"],
-      "matches": ["<all_urls>"]
+      "matches": [
+        "*://*.moviebox.com/*",
+        "*://*.movieboxpro.app/*",
+        "*://*.showbox.media/*",
+        "*://*.netmirror.com/*",
+        "*://*.netmirror.app/*",
+        "*://*.netflix.com/*",
+        "*://*.dailymotion.com/*",
+        "*://*.youtube.com/*",
+        "http://localhost:3000/*",
+        "https://*.onrender.com/*"
+      ]
     }
   ]
 }
